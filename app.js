@@ -16,23 +16,88 @@ const connDot = document.getElementById("connDot");
 const connLabel = document.getElementById("connLabel");
 const userTag = document.getElementById("userTag");
 const modeTag = document.getElementById("modeTag");
-const terminalBody = document.getElementById("terminalBody");
+
+const usernameOverlay = document.getElementById("usernameOverlay");
+const usernameInput = document.getElementById("usernameInput");
+const usernameSubmit = document.getElementById("usernameSubmit");
+const usernameError = document.getElementById("usernameError");
+const changeHandleBtn = document.getElementById("changeHandleBtn");
 
 // ------------------------------------------------------------
-// handle anônimo da sessão (estilo "hacker tag")
+// handle do usuário (escolhido manualmente, único no site)
 // ------------------------------------------------------------
-const ADJ = ["GHOST", "VOID", "CRIMSON", "NULL", "SHADE", "WRAITH", "ECHO", "FERAL", "ASH", "OMEN"];
-function makeHandle(){
-  const a = ADJ[Math.floor(Math.random() * ADJ.length)];
-  const n = Math.floor(1000 + Math.random() * 8999);
-  return `${a}_${n}`;
+const USERNAME_KEY = "rl_username";
+const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,16}$/;
+
+let USER_HANDLE = localStorage.getItem(USERNAME_KEY) || null;
+
+// será preenchido por initFirebase() ou initLocalFallback()
+let reserveUsername = async () => ({ ok: false, error: "backend indisponível, tente novamente em instantes." });
+let submitRoll = null;
+
+function showUsernameModal(){
+  usernameOverlay.classList.remove("hidden");
+  usernameError.textContent = "";
+  usernameInput.value = "";
+  setTimeout(() => usernameInput.focus(), 50);
 }
-let USER_HANDLE = sessionStorage.getItem("rl_handle");
-if (!USER_HANDLE) {
-  USER_HANDLE = makeHandle();
-  sessionStorage.setItem("rl_handle", USER_HANDLE);
+
+function hideUsernameModal(){
+  usernameOverlay.classList.add("hidden");
 }
-userTag.textContent = `handle: ${USER_HANDLE}`;
+
+function applyUsername(name){
+  USER_HANDLE = name;
+  localStorage.setItem(USERNAME_KEY, name);
+  userTag.textContent = `handle: ${USER_HANDLE}`;
+  hideUsernameModal();
+}
+
+if (USER_HANDLE) {
+  userTag.textContent = `handle: ${USER_HANDLE}`;
+  hideUsernameModal();
+} else {
+  userTag.textContent = "handle: —";
+  showUsernameModal();
+}
+
+async function handleUsernameSubmit(){
+  const raw = usernameInput.value.trim();
+
+  if (!USERNAME_PATTERN.test(raw)) {
+    usernameError.textContent = "use 3–16 caracteres: letras, números e underscore.";
+    return;
+  }
+
+  usernameSubmit.disabled = true;
+  usernameError.textContent = "verificando disponibilidade...";
+
+  const result = await reserveUsername(raw);
+
+  usernameSubmit.disabled = false;
+
+  if (!result.ok) {
+    usernameError.textContent = result.error || "não foi possível reservar esse handle.";
+    return;
+  }
+
+  applyUsername(raw);
+}
+
+usernameSubmit.addEventListener("click", handleUsernameSubmit);
+usernameInput.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    handleUsernameSubmit();
+  }
+});
+
+changeHandleBtn.addEventListener("click", () => {
+  localStorage.removeItem(USERNAME_KEY);
+  USER_HANDLE = null;
+  userTag.textContent = "handle: —";
+  showUsernameModal();
+});
 
 // ------------------------------------------------------------
 // pips do dado (layout clássico 1-6)
@@ -80,7 +145,7 @@ function addFeedLine(roll){
   if (terminalBoot) terminalBoot.style.display = "none";
 
   const line = document.createElement("div");
-  const isYou = roll.user === USER_HANDLE;
+  const isYou = USER_HANDLE && roll.user.toLowerCase() === USER_HANDLE.toLowerCase();
   line.className = "feed-line" + (isYou ? " feed-you" : "");
 
   const ts = roll.date ? timeLabel(roll.date) : "--:--:--";
@@ -92,7 +157,6 @@ function addFeedLine(roll){
 
   feedEl.prepend(line);
 
-  // limita quantidade de linhas no DOM
   while (feedEl.children.length > FEED_LIMIT) {
     feedEl.removeChild(feedEl.lastChild);
   }
@@ -143,12 +207,10 @@ function playRollAnimation(finalValue){
 // ------------------------------------------------------------
 const isConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("COLOQUE_AQUI");
 
-let submitRoll = null;
-
 async function initFirebase(){
   const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
   const {
-    getFirestore, collection, addDoc, query, orderBy, limit,
+    getFirestore, collection, addDoc, doc, runTransaction, query, orderBy, limit,
     onSnapshot, serverTimestamp, Timestamp
   } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
 
@@ -179,6 +241,27 @@ async function initFirebase(){
     });
   };
 
+  reserveUsername = async (name) => {
+    const key = name.toLowerCase();
+    const ref = doc(db, "usernames", key);
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref);
+        if (snap.exists()) {
+          throw new Error("TAKEN");
+        }
+        tx.set(ref, { display: name, createdAt: serverTimestamp() });
+      });
+      return { ok: true };
+    } catch (err) {
+      if (err && err.message === "TAKEN") {
+        return { ok: false, error: "esse handle já está em uso. escolha outro." };
+      }
+      console.error("Falha ao reservar handle:", err);
+      return { ok: false, error: "erro ao reservar handle. tente novamente." };
+    }
+  };
+
   modeTag.textContent = "modo: online (Firebase)";
   setConnected(true);
 }
@@ -190,6 +273,7 @@ async function initFirebase(){
 // ------------------------------------------------------------
 function initLocalFallback(){
   const STORAGE_KEY = "rl_local_rolls";
+  const USERNAMES_KEY = "rl_local_usernames";
   const channel = ("BroadcastChannel" in window) ? new BroadcastChannel("reverse_life_rolls") : null;
 
   function readStored(){
@@ -204,7 +288,6 @@ function initLocalFallback(){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-FEED_LIMIT)));
   }
 
-  // carrega histórico já existente
   readStored().forEach((r) => {
     addFeedLine({ id: r.id, user: r.user, value: r.value, date: new Date(r.ts) });
   });
@@ -240,6 +323,20 @@ function initLocalFallback(){
     if (channel) channel.postMessage(roll);
   };
 
+  reserveUsername = async (name) => {
+    const key = name.toLowerCase();
+    let list = [];
+    try {
+      list = JSON.parse(localStorage.getItem(USERNAMES_KEY) || "[]");
+    } catch {}
+    if (list.includes(key)) {
+      return { ok: false, error: "esse handle já está em uso (neste navegador)." };
+    }
+    list.push(key);
+    localStorage.setItem(USERNAMES_KEY, JSON.stringify(list));
+    return { ok: true };
+  };
+
   modeTag.textContent = "modo: local (sem Firebase configurado)";
   setConnected(true, "local — só entre abas deste navegador");
 }
@@ -271,6 +368,10 @@ function setConnected(ok, label){
 // ------------------------------------------------------------
 async function handleRoll(){
   if (rolling || !submitRoll) return;
+  if (!USER_HANDLE) {
+    showUsernameModal();
+    return;
+  }
   const value = 1 + Math.floor(Math.random() * 6);
   await playRollAnimation(value);
   try {
@@ -284,8 +385,9 @@ dieBtn.addEventListener("click", handleRoll);
 rollBtn.addEventListener("click", handleRoll);
 
 window.addEventListener("keydown", (ev) => {
-  if (ev.code === "Space" && !ev.repeat) {
-    ev.preventDefault();
-    handleRoll();
-  }
+  if (ev.code !== "Space" || ev.repeat) return;
+  const modalOpen = !usernameOverlay.classList.contains("hidden");
+  if (modalOpen) return; // espaço dentro do modal não deve rolar o dado
+  ev.preventDefault();
+  handleRoll();
 });

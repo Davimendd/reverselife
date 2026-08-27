@@ -34,9 +34,16 @@ Passo a passo:
          allow create: if true;
          allow update, delete: if false;
        }
+       match /usernames/{username} {
+         allow read: if true;
+         allow create: if !exists(/databases/$(database)/documents/usernames/$(username));
+         allow update, delete: if false;
+       }
      }
    }
    ```
+
+   A coleção `usernames` é o que garante que dois visitantes não consigam escolher o mesmo handle: cada nome vira o ID de um documento, e só é possível criar o documento se ele ainda não existir.
 
 4. Vá em **Configurações do projeto** (ícone de engrenagem) → role até **Seus apps** → clique no ícone `</>` para criar um app Web.
 5. Copie o objeto `firebaseConfig` gerado e cole no arquivo `firebase-config.js`, substituindo os valores `"COLOQUE_AQUI"`.
@@ -44,9 +51,16 @@ Passo a passo:
 
 Assim que as credenciais forem preenchidas, o site detecta automaticamente e passa a usar o Firestore — o rodapé do site mostra "modo: online (Firebase)" quando isso acontece.
 
+## Como funciona o handle (nome de usuário)
+
+- Na primeira visita, o site pede que a pessoa escolha um handle (3–16 caracteres: letras, números e underscore).
+- O nome é reservado de forma única: se alguém já estiver usando aquele handle (em qualquer lugar, com Firebase configurado), o site recusa e pede outro.
+- Uma vez confirmado, o handle fica salvo no navegador (`localStorage`), então a pessoa não precisa escolher de novo a cada visita.
+- O link "trocar", ao lado do handle no topo da página, libera a pessoa para escolher outro nome (o antigo continua reservado e não pode ser reutilizado por ninguém).
+- Sem login, sem senha — só um nome único por handle.
+
 ## Como funciona a rolagem
 
-- Cada visitante recebe um "handle" aleatório por sessão (ex: `GHOST_4471`), sem precisar de login.
 - Ao clicar no dado, no botão "ROLAR D6" ou apertar espaço, o dado gira e sorteia um valor de 1 a 6.
 - O resultado é enviado ao banco (Firestore ou modo local) e aparece no terminal com horário, handle e valor, para todo mundo conectado.
 - O terminal mostra as últimas 60 rolagens.
