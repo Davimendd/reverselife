@@ -59,6 +59,15 @@ Assim que as credenciais forem preenchidas, o site detecta automaticamente e pas
 - O link "trocar", ao lado do handle no topo da página, libera a pessoa para escolher outro nome (o antigo continua reservado e não pode ser reutilizado por ninguém).
 - Sem login, sem senha — só um nome único por handle.
 
+## Sons
+
+Todos os efeitos são gerados na hora pelo navegador (Web Audio API) — não há nenhum arquivo de áudio no projeto:
+
+- Um "clique" seco toca a cada instante da animação do dado rolando.
+- Quando o resultado é o pior possível de cada tabela (🔴 — Morte Instantânea, Ataque Devastador ou Dano no bloco simplificado), toca um alarme de terminal (dois bipes graves + um agudo).
+- O ícone de alto-falante no topo da página liga/desliga o som; a preferência fica salva no navegador.
+- Por política dos navegadores, o som só é liberado depois do primeiro clique na página (isso já acontece naturalmente ao rolar o dado).
+
 ## Sistemas de dado (tabelas de resultado)
 
 Acima do dado há um seletor com três sistemas — a escolha fica salva no navegador e é enviada junto com cada rolagem, então o terminal mostra qual sistema estava ativo para quem rolou:

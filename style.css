@@ -262,6 +262,19 @@ body{
 
 .link-btn:hover{ color:var(--red); }
 
+.mute-btn{
+  background:none;
+  border:none;
+  color:var(--mute);
+  font-size:14px;
+  cursor:pointer;
+  padding:0;
+  line-height:1;
+}
+
+.mute-btn:hover{ color:var(--red); }
+.mute-btn.is-muted{ opacity:0.5; }
+
 /* ---------- layout ---------- */
 
 .wrap{

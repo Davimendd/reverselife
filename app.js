@@ -1,4 +1,5 @@
 import { firebaseConfig, ROLLS_COLLECTION, FEED_LIMIT } from "./firebase-config.js";
+import { playDiceTick, playDeathAlert, isMuted, setMuted } from "./sound.js";
 
 // ------------------------------------------------------------
 // tabelas de resultado do dado
@@ -66,6 +67,7 @@ const usernameInput = document.getElementById("usernameInput");
 const usernameSubmit = document.getElementById("usernameSubmit");
 const usernameError = document.getElementById("usernameError");
 const changeHandleBtn = document.getElementById("changeHandleBtn");
+const muteBtn = document.getElementById("muteBtn");
 
 const modeSelect = document.getElementById("modeSelect");
 const modeIntro = document.getElementById("modeIntro");
@@ -98,9 +100,13 @@ modeSelect.addEventListener("click", (ev) => {
 
 applyModeUI();
 
-function renderOutcome(modeKey, value){
+function getEntry(modeKey, value){
   const table = DICE_TABLES[modeKey] || DICE_TABLES[DEFAULT_MODE];
-  const entry = table.entries[value];
+  return table.entries[value] || null;
+}
+
+function renderOutcome(modeKey, value){
+  const entry = getEntry(modeKey, value);
   if (!entry) return;
   outcomeEmoji.textContent = entry.emoji;
   outcomeTitle.textContent = entry.title;
@@ -109,8 +115,7 @@ function renderOutcome(modeKey, value){
 }
 
 function outcomeTitleFor(modeKey, value){
-  const table = DICE_TABLES[modeKey] || DICE_TABLES[DEFAULT_MODE];
-  const entry = table.entries[value];
+  const entry = getEntry(modeKey, value);
   return entry ? `${entry.emoji} ${entry.title}` : "";
 }
 
@@ -189,6 +194,19 @@ changeHandleBtn.addEventListener("click", () => {
   userTag.textContent = "handle: —";
   showUsernameModal();
 });
+
+function applyMuteUI(){
+  const muted = isMuted();
+  muteBtn.textContent = muted ? "🔇" : "🔊";
+  muteBtn.classList.toggle("is-muted", muted);
+}
+
+muteBtn.addEventListener("click", () => {
+  setMuted(!isMuted());
+  applyMuteUI();
+});
+
+applyMuteUI();
 
 // ------------------------------------------------------------
 // pips do dado (layout clássico 1-6)
@@ -280,6 +298,7 @@ function playRollAnimation(finalValue){
     const maxTicks = 10;
     const interval = setInterval(() => {
       renderPips(1 + Math.floor(Math.random() * 6));
+      playDiceTick();
       ticks += 1;
       if (ticks >= maxTicks) {
         clearInterval(interval);
@@ -471,6 +490,12 @@ async function handleRoll(){
   const value = 1 + Math.floor(Math.random() * 6);
   await playRollAnimation(value);
   renderOutcome(currentMode, value);
+
+  const entry = getEntry(currentMode, value);
+  if (entry && entry.emoji === "🔴") {
+    playDeathAlert();
+  }
+
   try {
     await submitRoll(value, currentMode);
   } catch (err) {
