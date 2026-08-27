@@ -59,6 +59,16 @@ Assim que as credenciais forem preenchidas, o site detecta automaticamente e pas
 - O link "trocar", ao lado do handle no topo da página, libera a pessoa para escolher outro nome (o antigo continua reservado e não pode ser reutilizado por ninguém).
 - Sem login, sem senha — só um nome único por handle.
 
+## Sistemas de dado (tabelas de resultado)
+
+Acima do dado há um seletor com três sistemas — a escolha fica salva no navegador e é enviada junto com cada rolagem, então o terminal mostra qual sistema estava ativo para quem rolou:
+
+- **🎲 Tabela do Dado** — resultado individual para cada face (1 a 6), de Morte Instantânea a Fuga Perfeita.
+- **⚙️ Variação Simplificada** — dois blocos: 1–3 é Dano, 4–6 é Escapou.
+- **🎯 Dado de Execução** — usado quando o personagem é alcançado e há chance de execução, de Ataque Devastador a Escape Perfeito.
+
+Depois de cada rolagem, a descrição completa do resultado aparece abaixo do dado, e um resumo (ex: "🟢 Dano Padrão") é anexado à linha correspondente no terminal.
+
 ## Como funciona a rolagem
 
 - Ao clicar no dado, no botão "ROLAR D6" ou apertar espaço, o dado gira e sorteia um valor de 1 a 6.

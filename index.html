@@ -65,6 +65,15 @@
     </div>
   </header>
 
+  <section class="mode-bar">
+    <div class="mode-select" id="modeSelect" role="tablist">
+      <button class="mode-btn" data-mode="tabela" role="tab">🎲 Tabela do Dado</button>
+      <button class="mode-btn" data-mode="simplificada" role="tab">⚙️ Variação Simplificada</button>
+      <button class="mode-btn" data-mode="execucao" role="tab">🎯 Dado de Execução</button>
+    </div>
+    <p class="mode-intro" id="modeIntro"></p>
+  </section>
+
   <main class="grid">
 
     <section class="die-panel">
@@ -86,6 +95,14 @@
       <div class="result-line">
         <span class="result-label">último resultado</span>
         <span class="result-value" id="resultValue">--</span>
+      </div>
+
+      <div class="outcome-box" id="outcomeBox" hidden>
+        <div class="outcome-head">
+          <span class="outcome-emoji" id="outcomeEmoji"></span>
+          <span class="outcome-title" id="outcomeTitle"></span>
+        </div>
+        <p class="outcome-desc" id="outcomeDesc"></p>
       </div>
 
       <button class="roll-btn" id="rollBtn">

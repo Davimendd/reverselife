@@ -61,6 +61,87 @@ body{
     radial-gradient(ellipse at 85% 90%, rgba(122,13,13,0.14), transparent 50%);
 }
 
+/* ---------- mode bar ---------- */
+
+.mode-bar{
+  margin-bottom:26px;
+}
+
+.mode-select{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:10px;
+}
+
+.mode-btn{
+  background:var(--panel);
+  border:1px solid var(--line);
+  color:var(--mute);
+  font-family:var(--mono);
+  font-size:12px;
+  letter-spacing:0.03em;
+  padding:9px 14px;
+  cursor:pointer;
+  transition:border-color .15s, color .15s, background .15s;
+}
+
+.mode-btn:hover{
+  border-color:var(--red-deep);
+  color:var(--off);
+}
+
+.mode-btn.active{
+  background:var(--red);
+  border-color:var(--red);
+  color:var(--black);
+  font-weight:700;
+}
+
+.mode-intro{
+  margin:0;
+  font-size:12px;
+  color:var(--mute);
+  line-height:1.6;
+  max-width:760px;
+}
+
+/* ---------- outcome box ---------- */
+
+.outcome-box{
+  border:1px solid var(--line);
+  border-left:3px solid var(--red);
+  background:var(--black-2);
+  padding:14px 16px;
+  margin-bottom:18px;
+  animation:lineIn .3s ease;
+}
+
+.outcome-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:6px;
+}
+
+.outcome-emoji{ font-size:16px; }
+
+.outcome-title{
+  font-family:var(--disp);
+  font-size:14px;
+  font-weight:600;
+  letter-spacing:0.03em;
+  color:var(--off);
+  text-transform:uppercase;
+}
+
+.outcome-desc{
+  margin:0;
+  font-size:12.5px;
+  line-height:1.65;
+  color:var(--mute);
+}
+
 /* ---------- username modal ---------- */
 
 .modal-overlay{
@@ -591,6 +672,7 @@ body{
 .feed-user{ color:#3fb8ff; }
 .feed-arrow{ color:var(--mute); }
 .feed-result{ color:var(--red-bright); font-weight:700; }
+.feed-outcome{ color:var(--off); }
 .feed-you .feed-user{ color:var(--red); }
 
 .terminal-input{

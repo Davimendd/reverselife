@@ -1,6 +1,50 @@
 import { firebaseConfig, ROLLS_COLLECTION, FEED_LIMIT } from "./firebase-config.js";
 
 // ------------------------------------------------------------
+// tabelas de resultado do dado
+// ------------------------------------------------------------
+const DICE_TABLES = {
+  tabela: {
+    label: "Tabela do Dado",
+    intro: "Quando uma ação decisiva de ataque, defesa ou fuga for exigida, role o dado. Os resultados são os seguintes, dependendo de como seu personagem está:",
+    entries: {
+      1: { emoji: "🔴", title: "Morte Instantânea", desc: "O ataque é fatal. O personagem morre no ato." },
+      2: { emoji: "🟠", title: "Dano Crítico/Quase Morte", desc: "O personagem sofre um dano massivo e fica incapacitado. Entra em estado de sangramento e morrerá se nenhum aliado ajudar a tempo." },
+      3: { emoji: "🟡", title: "Acerto Crítico e Lentidão", desc: "O golpe debilita gravemente o personagem, deixando-o muito lento. O jogador pode tentar reagir respondendo com outra ação imediata, mas deve rolar o dado novamente: se cair 3 ou menos, o narrador tem direito de aplicar o golpe fatal." },
+      4: { emoji: "🟢", title: "Dano Padrão", desc: "O ataque causa dano considerável, mas não mata. O defensor deve rolar o dado novamente para ver a consequência do ferimento (seguindo a mesma regra do número 3)." },
+      5: { emoji: "🔵", title: "Raspão", desc: "O ataque pega de raspão causando dano mínimo. No entanto, o personagem ainda está preso no combate e não consegue fugir." },
+      6: { emoji: "🟣", title: "Fuga Perfeita", desc: "O personagem consegue esquivar perfeitamente do golpe ou encontra uma brecha e foge da batalha com sucesso." }
+    }
+  },
+  simplificada: {
+    label: "Variação Simplificada",
+    intro: "Divisão por Funções: dependendo do RPG, os dados podem ter apenas duas funções diretas, sendo divididos em dois blocos de 3 números.",
+    entries: {
+      1: { emoji: "⚔️", title: "Dano", desc: "O personagem falha na defesa e sofre o dano do ataque." },
+      2: { emoji: "⚔️", title: "Dano", desc: "O personagem falha na defesa e sofre o dano do ataque." },
+      3: { emoji: "⚔️", title: "Dano", desc: "O personagem falha na defesa e sofre o dano do ataque." },
+      4: { emoji: "🏃", title: "Escapou", desc: "O personagem consegue se esquivar e escapar do combate com sucesso." },
+      5: { emoji: "🏃", title: "Escapou", desc: "O personagem consegue se esquivar e escapar do combate com sucesso." },
+      6: { emoji: "🏃", title: "Escapou", desc: "O personagem consegue se esquivar e escapar do combate com sucesso." }
+    }
+  },
+  execucao: {
+    label: "Dado de Execução",
+    intro: "Quando um personagem é realmente alcançado e existe oportunidade de execução:",
+    entries: {
+      1: { emoji: "🔴", title: "Ataque Devastador", desc: "O personagem não morre automaticamente apenas pelo número. O Narrador determina um dano muito alto e um ferimento compatível. Se o dano acumulado atingir 100%, ocorre a morte." },
+      2: { emoji: "🟠", title: "Ataque Crítico", desc: "Grande quantidade de dano. Pode provocar um ferimento grave e deixar o personagem extremamente vulnerável. Se atingir 100%: ☠️ Morte." },
+      3: { emoji: "🟡", title: "Ataque Grave", desc: "O personagem evita a execução imediata, mas sofre dano considerável e um possível ferimento." },
+      4: { emoji: "🟢", title: "Escape Ferido", desc: "O personagem consegue escapar do ataque principal, mas pode sofrer uma consequência menor." },
+      5: { emoji: "🔵", title: "Esquiva", desc: "O personagem evita o ataque e consegue abrir distância." },
+      6: { emoji: "🟣", title: "Escape Perfeito", desc: "O personagem evita completamente aquela tentativa de execução e consegue sair da situação imediata." }
+    }
+  }
+};
+
+const DEFAULT_MODE = "tabela";
+
+// ------------------------------------------------------------
 // elementos
 // ------------------------------------------------------------
 const dieBtn = document.getElementById("dieBtn");
@@ -22,6 +66,53 @@ const usernameInput = document.getElementById("usernameInput");
 const usernameSubmit = document.getElementById("usernameSubmit");
 const usernameError = document.getElementById("usernameError");
 const changeHandleBtn = document.getElementById("changeHandleBtn");
+
+const modeSelect = document.getElementById("modeSelect");
+const modeIntro = document.getElementById("modeIntro");
+const outcomeBox = document.getElementById("outcomeBox");
+const outcomeEmoji = document.getElementById("outcomeEmoji");
+const outcomeTitle = document.getElementById("outcomeTitle");
+const outcomeDesc = document.getElementById("outcomeDesc");
+
+// ------------------------------------------------------------
+// modo/sistema de dado selecionado
+// ------------------------------------------------------------
+const MODE_KEY = "rl_dice_mode";
+let currentMode = localStorage.getItem(MODE_KEY) || DEFAULT_MODE;
+if (!DICE_TABLES[currentMode]) currentMode = DEFAULT_MODE;
+
+function applyModeUI(){
+  [...modeSelect.children].forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.mode === currentMode);
+  });
+  modeIntro.textContent = DICE_TABLES[currentMode].intro;
+}
+
+modeSelect.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".mode-btn");
+  if (!btn) return;
+  currentMode = btn.dataset.mode;
+  localStorage.setItem(MODE_KEY, currentMode);
+  applyModeUI();
+});
+
+applyModeUI();
+
+function renderOutcome(modeKey, value){
+  const table = DICE_TABLES[modeKey] || DICE_TABLES[DEFAULT_MODE];
+  const entry = table.entries[value];
+  if (!entry) return;
+  outcomeEmoji.textContent = entry.emoji;
+  outcomeTitle.textContent = entry.title;
+  outcomeDesc.textContent = entry.desc;
+  outcomeBox.hidden = false;
+}
+
+function outcomeTitleFor(modeKey, value){
+  const table = DICE_TABLES[modeKey] || DICE_TABLES[DEFAULT_MODE];
+  const entry = table.entries[value];
+  return entry ? `${entry.emoji} ${entry.title}` : "";
+}
 
 // ------------------------------------------------------------
 // handle do usuário (escolhido manualmente, único no site)
@@ -149,11 +240,13 @@ function addFeedLine(roll){
   line.className = "feed-line" + (isYou ? " feed-you" : "");
 
   const ts = roll.date ? timeLabel(roll.date) : "--:--:--";
+  const outcome = outcomeTitleFor(roll.mode, roll.value);
   line.innerHTML =
     `<span class="feed-time">[${ts}]</span> ` +
     `<span class="feed-user">${escapeHtml(roll.user)}</span> ` +
     `<span class="feed-arrow">rolou →</span> ` +
-    `<span class="feed-result">${roll.value}</span>`;
+    `<span class="feed-result">${roll.value}</span>` +
+    (outcome ? ` <span class="feed-arrow">·</span> <span class="feed-outcome">${escapeHtml(outcome)}</span>` : "");
 
   feedEl.prepend(line);
 
@@ -227,16 +320,17 @@ async function initFirebase(){
       if (renderedIds.has(docSnap.id)) return;
       const data = docSnap.data();
       const date = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
-      addFeedLine({ id: docSnap.id, user: data.user, value: data.value, date });
+      addFeedLine({ id: docSnap.id, user: data.user, value: data.value, mode: data.mode, date });
     });
   }, () => {
     setConnected(false, "erro de conexão");
   });
 
-  submitRoll = async (value) => {
+  submitRoll = async (value, mode) => {
     await addDoc(rollsRef, {
       user: USER_HANDLE,
       value,
+      mode,
       createdAt: serverTimestamp()
     });
   };
@@ -289,11 +383,11 @@ function initLocalFallback(){
   }
 
   readStored().forEach((r) => {
-    addFeedLine({ id: r.id, user: r.user, value: r.value, date: new Date(r.ts) });
+    addFeedLine({ id: r.id, user: r.user, value: r.value, mode: r.mode, date: new Date(r.ts) });
   });
 
   function handleIncoming(r){
-    addFeedLine({ id: r.id, user: r.user, value: r.value, date: new Date(r.ts) });
+    addFeedLine({ id: r.id, user: r.user, value: r.value, mode: r.mode, date: new Date(r.ts) });
   }
 
   if (channel) {
@@ -309,17 +403,18 @@ function initLocalFallback(){
     } catch {}
   });
 
-  submitRoll = async (value) => {
+  submitRoll = async (value, mode) => {
     const roll = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       user: USER_HANDLE,
       value,
+      mode,
       ts: Date.now()
     };
     const list = readStored();
     list.push(roll);
     writeStored(list);
-    addFeedLine({ id: roll.id, user: roll.user, value: roll.value, date: new Date(roll.ts) });
+    addFeedLine({ id: roll.id, user: roll.user, value: roll.value, mode: roll.mode, date: new Date(roll.ts) });
     if (channel) channel.postMessage(roll);
   };
 
@@ -372,10 +467,12 @@ async function handleRoll(){
     showUsernameModal();
     return;
   }
+  outcomeBox.hidden = true;
   const value = 1 + Math.floor(Math.random() * 6);
   await playRollAnimation(value);
+  renderOutcome(currentMode, value);
   try {
-    await submitRoll(value);
+    await submitRoll(value, currentMode);
   } catch (err) {
     console.error("Falha ao enviar rolagem:", err);
   }
