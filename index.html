@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REVERSE LIFE // rolagem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="scanlines" aria-hidden="true"></div>
+<div class="noise" aria-hidden="true"></div>
+
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <span class="brand-glitch" data-text="REVERSE LIFE">REVERSE LIFE</span>
+      <span class="brand-sub">protocolo de sorte invertida</span>
+    </div>
+    <div class="status">
+      <span class="status-dot" id="connDot"></span>
+      <span id="connLabel">conectando…</span>
+      <span class="divider">/</span>
+      <span id="userTag">handle: —</span>
+    </div>
+  </header>
+
+  <main class="grid">
+
+    <section class="die-panel">
+      <div class="panel-label">
+        <span>01</span>
+        <h2>o dado</h2>
+      </div>
+
+      <div class="die-stage">
+        <div class="die-glow" id="dieGlow"></div>
+        <button class="die" id="dieBtn" aria-label="Rolar o dado">
+          <svg id="dieSvg" viewBox="0 0 200 200" class="die-svg">
+            <rect x="8" y="8" width="184" height="184" rx="28" class="die-face"/>
+            <g id="pips"></g>
+          </svg>
+        </button>
+      </div>
+
+      <div class="result-line">
+        <span class="result-label">último resultado</span>
+        <span class="result-value" id="resultValue">--</span>
+      </div>
+
+      <button class="roll-btn" id="rollBtn">
+        <span class="roll-btn-text">ROLAR D6</span>
+        <span class="roll-btn-key">[ ESPAÇO ]</span>
+      </button>
+
+      <p class="hint">cada rolagem é transmitida ao vivo para o terminal ao lado. não há como desfazer o destino.</p>
+    </section>
+
+    <section class="terminal-panel">
+      <div class="panel-label">
+        <span>02</span>
+        <h2>terminal compartilhado</h2>
+      </div>
+
+      <div class="terminal">
+        <div class="terminal-bar">
+          <div class="terminal-dots">
+            <span></span><span></span><span></span>
+          </div>
+          <span class="terminal-title">/var/log/reverse_life.feed</span>
+          <span class="terminal-count" id="rollCount">0 rolagens</span>
+        </div>
+        <div class="terminal-body" id="terminalBody">
+          <div class="terminal-boot" id="terminalBoot">
+            <p>&gt; inicializando feed compartilhado...</p>
+            <p>&gt; aguardando conexão com o servidor de estado...</p>
+          </div>
+          <div class="feed" id="feed"></div>
+        </div>
+        <div class="terminal-input">
+          <span class="prompt">&gt;</span>
+          <span class="terminal-input-text">aguardando próxima rolagem</span>
+          <span class="cursor" aria-hidden="true"></span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <span>REVERSE LIFE © feed em tempo real</span>
+    <span id="modeTag">modo: offline (configure o firebase)</span>
+  </footer>
+
+</div>
+
+<script type="module" src="firebase-config.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
