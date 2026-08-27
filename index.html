@@ -14,6 +14,7 @@
 <div class="scanlines" aria-hidden="true"></div>
 <div class="noise" aria-hidden="true"></div>
 
+<!-- ===================== modal: handle único ===================== -->
 <div class="modal-overlay" id="usernameOverlay">
   <div class="modal-card">
     <div class="terminal-bar">
@@ -27,15 +28,7 @@
       <label class="modal-label" for="usernameInput">seu handle</label>
       <div class="modal-input-row">
         <span class="prompt">&gt;</span>
-        <input
-          type="text"
-          id="usernameInput"
-          class="modal-input"
-          maxlength="16"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="ex: RAVEN_7"
-        >
+        <input type="text" id="usernameInput" class="modal-input" maxlength="16" autocomplete="off" spellcheck="false" placeholder="ex: RAVEN_7">
       </div>
       <p class="modal-rules">3–16 caracteres · letras, números e underscore</p>
       <p class="modal-error" id="usernameError"></p>
@@ -43,6 +36,83 @@
       <button class="roll-btn" id="usernameSubmit">
         <span class="roll-btn-text">CONFIRMAR HANDLE</span>
         <span class="roll-btn-key">[ ENTER ]</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== modal: criar campanha ===================== -->
+<div class="modal-overlay hidden" id="campaignModal">
+  <div class="modal-card">
+    <div class="terminal-bar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">/bin/nova_campanha</span>
+      <button class="modal-close" id="campaignModalClose" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label" for="campaignName">nome da campanha</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="text" id="campaignName" class="modal-input" maxlength="60" autocomplete="off" placeholder="ex: Ordem Paranormal — Setor 9">
+      </div>
+
+      <label class="modal-label" for="campaignDesc">descrição do RPG</label>
+      <textarea id="campaignDesc" class="modal-textarea" maxlength="600" placeholder="do que se trata essa campanha..."></textarea>
+
+      <label class="modal-label" for="campaignImage">imagem da campanha</label>
+      <input type="file" id="campaignImage" class="modal-file" accept="image/*">
+      <div class="image-preview" id="campaignImagePreview" hidden><img alt="Pré-visualização"></div>
+
+      <p class="modal-error" id="campaignError"></p>
+
+      <button class="roll-btn" id="campaignSubmit">
+        <span class="roll-btn-text">CRIAR CAMPANHA</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== modal: criar personagem ===================== -->
+<div class="modal-overlay hidden" id="characterModal">
+  <div class="modal-card">
+    <div class="terminal-bar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">/bin/nova_ficha</span>
+      <button class="modal-close" id="characterModalClose" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label" for="charName">nome completo</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="text" id="charName" class="modal-input" maxlength="60" autocomplete="off" placeholder="nome do personagem">
+      </div>
+
+      <label class="modal-label" for="charGender">gênero</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="text" id="charGender" class="modal-input" maxlength="30" autocomplete="off" placeholder="ex: masculino, feminino, não-binário...">
+      </div>
+
+      <label class="modal-label" for="charStrength">ponto forte</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="text" id="charStrength" class="modal-input" maxlength="80" autocomplete="off" placeholder="ex: força sobre-humana">
+      </div>
+
+      <label class="modal-label" for="charWeakness">ponto fraco</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="text" id="charWeakness" class="modal-input" maxlength="80" autocomplete="off" placeholder="ex: pavor de fogo">
+      </div>
+
+      <label class="modal-label" for="charPhoto">foto do personagem</label>
+      <input type="file" id="charPhoto" class="modal-file" accept="image/*">
+      <div class="image-preview" id="charPhotoPreview" hidden><img alt="Pré-visualização"></div>
+
+      <p class="modal-error" id="characterError"></p>
+
+      <button class="roll-btn" id="characterSubmit">
+        <span class="roll-btn-text">CRIAR FICHA</span>
       </button>
     </div>
   </div>
@@ -67,93 +137,139 @@
     </div>
   </header>
 
-  <section class="mode-bar">
-    <div class="mode-select" id="modeSelect" role="tablist">
-      <button class="mode-btn" data-mode="tabela" role="tab">🎲 Tabela do Dado</button>
-      <button class="mode-btn" data-mode="simplificada" role="tab">⚙️ Variação Simplificada</button>
-      <button class="mode-btn" data-mode="execucao" role="tab">🎯 Dado de Execução</button>
-    </div>
-    <p class="mode-intro" id="modeIntro"></p>
-  </section>
+  <nav class="tab-nav" id="tabNav">
+    <button class="tab-btn active" data-tab="tabDice">🎲 Dados</button>
+    <button class="tab-btn" data-tab="tabCampaigns">📖 Campanhas</button>
+  </nav>
 
-  <main class="grid">
+  <!-- ===================== ABA: DADOS ===================== -->
+  <div class="tab-panel active" id="tabDice">
 
-    <section class="die-panel">
-      <div class="panel-label">
-        <span>01</span>
-        <h2>o dado</h2>
+    <section class="mode-bar">
+      <div class="mode-select" id="modeSelect" role="tablist">
+        <button class="mode-btn" data-mode="tabela" role="tab">🎲 Tabela do Dado</button>
+        <button class="mode-btn" data-mode="simplificada" role="tab">⚙️ Variação Simplificada</button>
+        <button class="mode-btn" data-mode="execucao" role="tab">🎯 Dado de Execução</button>
       </div>
+      <p class="mode-intro" id="modeIntro"></p>
+    </section>
 
-      <div class="die-stage">
-        <div class="die-glow" id="dieGlow"></div>
-        <button class="die" id="dieBtn" aria-label="Rolar o dado">
-          <svg id="dieSvg" viewBox="0 0 200 200" class="die-svg">
-            <rect x="8" y="8" width="184" height="184" rx="28" class="die-face"/>
-            <g id="pips"></g>
-          </svg>
+    <main class="grid">
+
+      <section class="die-panel">
+        <div class="panel-label">
+          <span>01</span>
+          <h2>o dado</h2>
+        </div>
+
+        <div class="die-stage">
+          <div class="die-glow" id="dieGlow"></div>
+          <button class="die" id="dieBtn" aria-label="Rolar o dado">
+            <svg id="dieSvg" viewBox="0 0 200 200" class="die-svg">
+              <rect x="8" y="8" width="184" height="184" rx="28" class="die-face"/>
+              <g id="pips"></g>
+            </svg>
+          </button>
+        </div>
+
+        <div class="result-line">
+          <span class="result-label">último resultado</span>
+          <span class="result-value" id="resultValue">--</span>
+        </div>
+
+        <div class="outcome-box" id="outcomeBox" hidden>
+          <div class="outcome-head">
+            <span class="outcome-emoji" id="outcomeEmoji"></span>
+            <span class="outcome-title" id="outcomeTitle"></span>
+          </div>
+          <p class="outcome-desc" id="outcomeDesc"></p>
+        </div>
+
+        <button class="roll-btn" id="rollBtn">
+          <span class="roll-btn-text">ROLAR D6</span>
+          <span class="roll-btn-key">[ ESPAÇO ]</span>
+        </button>
+
+        <p class="hint">cada rolagem é transmitida ao vivo para o terminal ao lado. não há como desfazer o destino.</p>
+      </section>
+
+      <section class="terminal-panel">
+        <div class="panel-label">
+          <span>02</span>
+          <h2>terminal compartilhado</h2>
+        </div>
+
+        <div class="terminal">
+          <div class="terminal-bar">
+            <div class="terminal-dots"><span></span><span></span><span></span></div>
+            <span class="terminal-title">/var/log/reverse_life.feed</span>
+            <span class="terminal-count" id="rollCount">0 rolagens</span>
+          </div>
+          <div class="terminal-body" id="terminalBody">
+            <div class="terminal-boot" id="terminalBoot">
+              <p>&gt; inicializando feed compartilhado...</p>
+              <p>&gt; aguardando conexão com o servidor de estado...</p>
+            </div>
+            <div class="feed" id="feed"></div>
+          </div>
+          <div class="terminal-input">
+            <span class="prompt">&gt;</span>
+            <span class="terminal-input-text">aguardando próxima rolagem</span>
+            <span class="cursor" aria-hidden="true"></span>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <footer class="foot">
+      <span>REVERSE LIFE © feed em tempo real</span>
+      <span id="modeTag">modo: offline (configure o firebase)</span>
+    </footer>
+  </div>
+
+  <!-- ===================== ABA: CAMPANHAS ===================== -->
+  <div class="tab-panel" id="tabCampaigns">
+
+    <!-- lista de campanhas -->
+    <section id="campaignListView">
+      <div class="panel-label campaigns-head">
+        <span>03</span>
+        <h2>campanhas</h2>
+        <button class="roll-btn small-btn" id="createCampaignBtn">
+          <span class="roll-btn-text">+ CRIAR CAMPANHA</span>
         </button>
       </div>
 
-      <div class="result-line">
-        <span class="result-label">último resultado</span>
-        <span class="result-value" id="resultValue">--</span>
-      </div>
+      <p class="hint" id="campaignsMode">modo: offline</p>
 
-      <div class="outcome-box" id="outcomeBox" hidden>
-        <div class="outcome-head">
-          <span class="outcome-emoji" id="outcomeEmoji"></span>
-          <span class="outcome-title" id="outcomeTitle"></span>
-        </div>
-        <p class="outcome-desc" id="outcomeDesc"></p>
-      </div>
-
-      <button class="roll-btn" id="rollBtn">
-        <span class="roll-btn-text">ROLAR D6</span>
-        <span class="roll-btn-key">[ ESPAÇO ]</span>
-      </button>
-
-      <p class="hint">cada rolagem é transmitida ao vivo para o terminal ao lado. não há como desfazer o destino.</p>
+      <div class="campaign-grid" id="campaignGrid"></div>
+      <p class="empty-state" id="campaignEmpty" hidden>nenhuma campanha criada ainda. seja o primeiro narrador.</p>
     </section>
 
-    <section class="terminal-panel">
-      <div class="panel-label">
-        <span>02</span>
-        <h2>terminal compartilhado</h2>
+    <!-- detalhe de uma campanha -->
+    <section id="campaignDetailView" hidden>
+      <button class="link-btn back-btn" id="backToCampaigns">&larr; voltar às campanhas</button>
+
+      <div class="campaign-header" id="campaignHeader"></div>
+
+      <div class="panel-label campaigns-head">
+        <span>04</span>
+        <h2>personagens</h2>
+        <button class="roll-btn small-btn" id="createCharacterBtn">
+          <span class="roll-btn-text">+ CRIAR FICHA</span>
+        </button>
       </div>
 
-      <div class="terminal">
-        <div class="terminal-bar">
-          <div class="terminal-dots">
-            <span></span><span></span><span></span>
-          </div>
-          <span class="terminal-title">/var/log/reverse_life.feed</span>
-          <span class="terminal-count" id="rollCount">0 rolagens</span>
-        </div>
-        <div class="terminal-body" id="terminalBody">
-          <div class="terminal-boot" id="terminalBoot">
-            <p>&gt; inicializando feed compartilhado...</p>
-            <p>&gt; aguardando conexão com o servidor de estado...</p>
-          </div>
-          <div class="feed" id="feed"></div>
-        </div>
-        <div class="terminal-input">
-          <span class="prompt">&gt;</span>
-          <span class="terminal-input-text">aguardando próxima rolagem</span>
-          <span class="cursor" aria-hidden="true"></span>
-        </div>
-      </div>
+      <div class="character-grid" id="characterGrid"></div>
+      <p class="empty-state" id="characterEmpty" hidden>nenhum personagem criado nessa campanha ainda.</p>
     </section>
 
-  </main>
-
-  <footer class="foot">
-    <span>REVERSE LIFE © feed em tempo real</span>
-    <span id="modeTag">modo: offline (configure o firebase)</span>
-  </footer>
+  </div>
 
 </div>
 
-<script type="module" src="firebase-config.js"></script>
 <script type="module" src="app.js"></script>
+<script type="module" src="campaigns.js"></script>
 </body>
 </html>

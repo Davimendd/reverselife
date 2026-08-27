@@ -4,10 +4,14 @@ Site com um dado de 6 lados e um terminal onde toda rolagem feita por qualquer p
 
 ## Arquivos
 
-- `index.html` — estrutura da página
+- `index.html` — estrutura da página (abas, modais, terminal, campanhas)
 - `style.css` — identidade visual (preto/vermelho, terminal, glitch no título)
-- `app.js` — lógica do dado, animação e feed em tempo real
 - `firebase-config.js` — onde você cola as credenciais do seu Firebase
+- `firebase-core.js` — inicialização compartilhada do Firebase (Firestore + Storage)
+- `identity.js` — escolha e reserva do handle único
+- `sound.js` — efeitos sonoros sintetizados (sem arquivos de áudio)
+- `app.js` — lógica do dado, animação e feed em tempo real
+- `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos e kits médicos
 
 ## Como rodar
 
@@ -77,6 +81,62 @@ Acima do dado há um seletor com três sistemas — a escolha fica salva no nave
 - **🎯 Dado de Execução** — usado quando o personagem é alcançado e há chance de execução, de Ataque Devastador a Escape Perfeito.
 
 Depois de cada rolagem, a descrição completa do resultado aparece abaixo do dado, e um resumo (ex: "🟢 Dano Padrão") é anexado à linha correspondente no terminal.
+
+## Campanhas de RPG
+
+Uma segunda aba, "📖 Campanhas", funciona como salas: qualquer pessoa pode criar uma campanha (nome, descrição, imagem) e qualquer pessoa que acessar o site pode entrar nela e criar uma ficha de personagem (nome completo, gênero, ponto forte, ponto fraco, foto). Todos os personagens da campanha aparecem para todo mundo.
+
+**Barra de dano (0–100%)**, com faixas de status:
+- 0–24%: estável
+- 25–49%: ferido
+- 50–74%: muito ferido
+- 75–99%: estado crítico
+- 100%: morte
+
+Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer personagem dela.
+
+**Ferimentos e limitações**: um campo de texto livre na ficha, editável por quem criou a campanha OU por quem criou aquela ficha específica.
+
+**Kit médico**: tanto o narrador (criador da campanha) quanto quem criou a ficha podem adicionar kits. Usar um kit reduz o dano em 30 pontos percentuais e consome uma unidade — o campo de ferimentos continua livre para editar manualmente caso o kit também resolva alguma limitação registrada ali.
+
+**⚠️ Sobre segurança:** como o site não tem login/senha (só handles únicos escolhidos livremente), as permissões de "só o narrador pode..." são aplicadas apenas pela interface — o navegador simplesmente esconde os botões de quem não tem permissão. Isso impede cliques acidentais, mas não é uma trava criptográfica: alguém com conhecimento técnico poderia, em teoria, chamar as funções diretamente. Para um sistema realmente seguro contra isso, seria necessário adicionar Firebase Authentication (login de verdade) e regras do Firestore que verifiquem o usuário autenticado — o que está fora do escopo atual, mas pode ser adicionado depois se for importante para o seu uso.
+
+**Sobre as imagens:** o Firebase Storage passou a exigir o plano pago (Blaze) para novos projetos, então este site **não usa Storage**. As imagens de campanha e de personagem são redimensionadas no navegador (até 640px ou 480px de lado, JPEG comprimido) e guardadas como texto base64 direto dentro do próprio documento no Firestore — que continua 100% no plano gratuito (Spark). Isso mantém cada documento bem abaixo do limite de 1 MB do Firestore, então não há custo extra além do que você já paga (nada, no plano gratuito) pelas rolagens e handles.
+
+### Regras do Firestore (adicionar às já existentes)
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rolls/{roll} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if false;
+    }
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if !exists(/databases/$(database)/documents/usernames/$(username));
+      allow update, delete: if false;
+    }
+    match /campaigns/{campaignId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if false;
+
+      match /characters/{characterId} {
+        allow read: if true;
+        allow create: if true;
+        allow update: if true;
+        allow delete: if false;
+      }
+    }
+  }
+}
+```
+
+Sem Firebase configurado, campanhas e personagens funcionam em modo local (localStorage + BroadcastChannel), com as imagens guardadas como base64 — funciona só entre abas do mesmo navegador, ideal para testar antes de configurar.
 
 ## Como funciona a rolagem
 

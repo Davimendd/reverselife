@@ -1,4 +1,6 @@
-import { firebaseConfig, ROLLS_COLLECTION, FEED_LIMIT } from "./firebase-config.js";
+import { ROLLS_COLLECTION, FEED_LIMIT } from "./firebase-config.js";
+import { isConfigured, getDb, getFirestoreFns } from "./firebase-core.js";
+import { getCurrentHandle, ensureHandle, isModalOpen } from "./identity.js";
 import { playDiceTick, playDeathAlert, isMuted, setMuted } from "./sound.js";
 
 // ------------------------------------------------------------
@@ -59,14 +61,7 @@ const terminalBoot = document.getElementById("terminalBoot");
 const rollCountEl = document.getElementById("rollCount");
 const connDot = document.getElementById("connDot");
 const connLabel = document.getElementById("connLabel");
-const userTag = document.getElementById("userTag");
 const modeTag = document.getElementById("modeTag");
-
-const usernameOverlay = document.getElementById("usernameOverlay");
-const usernameInput = document.getElementById("usernameInput");
-const usernameSubmit = document.getElementById("usernameSubmit");
-const usernameError = document.getElementById("usernameError");
-const changeHandleBtn = document.getElementById("changeHandleBtn");
 const muteBtn = document.getElementById("muteBtn");
 
 const modeSelect = document.getElementById("modeSelect");
@@ -75,6 +70,32 @@ const outcomeBox = document.getElementById("outcomeBox");
 const outcomeEmoji = document.getElementById("outcomeEmoji");
 const outcomeTitle = document.getElementById("outcomeTitle");
 const outcomeDesc = document.getElementById("outcomeDesc");
+
+// ------------------------------------------------------------
+// troca de abas (Dados / Campanhas)
+// ------------------------------------------------------------
+const tabNav = document.getElementById("tabNav");
+tabNav.addEventListener("click", (ev) => {
+  const btn = ev.target.closest(".tab-btn");
+  if (!btn) return;
+  const targetId = btn.dataset.tab;
+  document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
+  document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === targetId));
+});
+
+// ------------------------------------------------------------
+// mudo
+// ------------------------------------------------------------
+function applyMuteUI(){
+  const muted = isMuted();
+  muteBtn.textContent = muted ? "🔇" : "🔊";
+  muteBtn.classList.toggle("is-muted", muted);
+}
+muteBtn.addEventListener("click", () => {
+  setMuted(!isMuted());
+  applyMuteUI();
+});
+applyMuteUI();
 
 // ------------------------------------------------------------
 // modo/sistema de dado selecionado
@@ -120,95 +141,6 @@ function outcomeTitleFor(modeKey, value){
 }
 
 // ------------------------------------------------------------
-// handle do usuário (escolhido manualmente, único no site)
-// ------------------------------------------------------------
-const USERNAME_KEY = "rl_username";
-const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,16}$/;
-
-let USER_HANDLE = localStorage.getItem(USERNAME_KEY) || null;
-
-// será preenchido por initFirebase() ou initLocalFallback()
-let reserveUsername = async () => ({ ok: false, error: "backend indisponível, tente novamente em instantes." });
-let submitRoll = null;
-
-function showUsernameModal(){
-  usernameOverlay.classList.remove("hidden");
-  usernameError.textContent = "";
-  usernameInput.value = "";
-  setTimeout(() => usernameInput.focus(), 50);
-}
-
-function hideUsernameModal(){
-  usernameOverlay.classList.add("hidden");
-}
-
-function applyUsername(name){
-  USER_HANDLE = name;
-  localStorage.setItem(USERNAME_KEY, name);
-  userTag.textContent = `handle: ${USER_HANDLE}`;
-  hideUsernameModal();
-}
-
-if (USER_HANDLE) {
-  userTag.textContent = `handle: ${USER_HANDLE}`;
-  hideUsernameModal();
-} else {
-  userTag.textContent = "handle: —";
-  showUsernameModal();
-}
-
-async function handleUsernameSubmit(){
-  const raw = usernameInput.value.trim();
-
-  if (!USERNAME_PATTERN.test(raw)) {
-    usernameError.textContent = "use 3–16 caracteres: letras, números e underscore.";
-    return;
-  }
-
-  usernameSubmit.disabled = true;
-  usernameError.textContent = "verificando disponibilidade...";
-
-  const result = await reserveUsername(raw);
-
-  usernameSubmit.disabled = false;
-
-  if (!result.ok) {
-    usernameError.textContent = result.error || "não foi possível reservar esse handle.";
-    return;
-  }
-
-  applyUsername(raw);
-}
-
-usernameSubmit.addEventListener("click", handleUsernameSubmit);
-usernameInput.addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") {
-    ev.preventDefault();
-    handleUsernameSubmit();
-  }
-});
-
-changeHandleBtn.addEventListener("click", () => {
-  localStorage.removeItem(USERNAME_KEY);
-  USER_HANDLE = null;
-  userTag.textContent = "handle: —";
-  showUsernameModal();
-});
-
-function applyMuteUI(){
-  const muted = isMuted();
-  muteBtn.textContent = muted ? "🔇" : "🔊";
-  muteBtn.classList.toggle("is-muted", muted);
-}
-
-muteBtn.addEventListener("click", () => {
-  setMuted(!isMuted());
-  applyMuteUI();
-});
-
-applyMuteUI();
-
-// ------------------------------------------------------------
 // pips do dado (layout clássico 1-6)
 // ------------------------------------------------------------
 const PIP_LAYOUTS = {
@@ -247,14 +179,21 @@ function timeLabel(date){
 let renderedIds = new Set();
 let rollTotal = 0;
 
+function escapeHtml(str){
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
 function addFeedLine(roll){
   if (roll.id && renderedIds.has(roll.id)) return;
   if (roll.id) renderedIds.add(roll.id);
 
   if (terminalBoot) terminalBoot.style.display = "none";
 
+  const handle = getCurrentHandle();
   const line = document.createElement("div");
-  const isYou = USER_HANDLE && roll.user.toLowerCase() === USER_HANDLE.toLowerCase();
+  const isYou = handle && roll.user.toLowerCase() === handle.toLowerCase();
   line.className = "feed-line" + (isYou ? " feed-you" : "");
 
   const ts = roll.date ? timeLabel(roll.date) : "--:--:--";
@@ -274,12 +213,6 @@ function addFeedLine(roll){
 
   rollTotal += 1;
   rollCountEl.textContent = `${rollTotal} rolagem${rollTotal === 1 ? "" : "s"}`;
-}
-
-function escapeHtml(str){
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 // ------------------------------------------------------------
@@ -317,19 +250,13 @@ function playRollAnimation(finalValue){
 // ------------------------------------------------------------
 // backend: tenta Firebase, senão cai em modo local
 // ------------------------------------------------------------
-const isConfigured = firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("COLOQUE_AQUI");
+let submitRoll = null;
 
 async function initFirebase(){
-  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-  const {
-    getFirestore, collection, addDoc, doc, runTransaction, query, orderBy, limit,
-    onSnapshot, serverTimestamp, Timestamp
-  } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+  const db = await getDb();
+  const { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
   const rollsRef = collection(db, ROLLS_COLLECTION);
-
   const q = query(rollsRef, orderBy("createdAt", "desc"), limit(FEED_LIMIT));
 
   onSnapshot(q, (snapshot) => {
@@ -347,56 +274,24 @@ async function initFirebase(){
 
   submitRoll = async (value, mode) => {
     await addDoc(rollsRef, {
-      user: USER_HANDLE,
+      user: getCurrentHandle(),
       value,
       mode,
       createdAt: serverTimestamp()
     });
   };
 
-  reserveUsername = async (name) => {
-    const key = name.toLowerCase();
-    const ref = doc(db, "usernames", key);
-    try {
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(ref);
-        if (snap.exists()) {
-          throw new Error("TAKEN");
-        }
-        tx.set(ref, { display: name, createdAt: serverTimestamp() });
-      });
-      return { ok: true };
-    } catch (err) {
-      if (err && err.message === "TAKEN") {
-        return { ok: false, error: "esse handle já está em uso. escolha outro." };
-      }
-      console.error("Falha ao reservar handle:", err);
-      return { ok: false, error: "erro ao reservar handle. tente novamente." };
-    }
-  };
-
   modeTag.textContent = "modo: online (Firebase)";
   setConnected(true);
 }
 
-// ------------------------------------------------------------
-// fallback local: localStorage + BroadcastChannel
-// sincroniza entre abas do mesmo navegador enquanto o Firebase
-// não estiver configurado.
-// ------------------------------------------------------------
 function initLocalFallback(){
   const STORAGE_KEY = "rl_local_rolls";
-  const USERNAMES_KEY = "rl_local_usernames";
   const channel = ("BroadcastChannel" in window) ? new BroadcastChannel("reverse_life_rolls") : null;
 
   function readStored(){
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; }
   }
-
   function writeStored(list){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-FEED_LIMIT)));
   }
@@ -409,9 +304,7 @@ function initLocalFallback(){
     addFeedLine({ id: r.id, user: r.user, value: r.value, mode: r.mode, date: new Date(r.ts) });
   }
 
-  if (channel) {
-    channel.onmessage = (ev) => handleIncoming(ev.data);
-  }
+  if (channel) channel.onmessage = (ev) => handleIncoming(ev.data);
 
   window.addEventListener("storage", (ev) => {
     if (ev.key !== STORAGE_KEY || !ev.newValue) return;
@@ -425,7 +318,7 @@ function initLocalFallback(){
   submitRoll = async (value, mode) => {
     const roll = {
       id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      user: USER_HANDLE,
+      user: getCurrentHandle(),
       value,
       mode,
       ts: Date.now()
@@ -437,20 +330,6 @@ function initLocalFallback(){
     if (channel) channel.postMessage(roll);
   };
 
-  reserveUsername = async (name) => {
-    const key = name.toLowerCase();
-    let list = [];
-    try {
-      list = JSON.parse(localStorage.getItem(USERNAMES_KEY) || "[]");
-    } catch {}
-    if (list.includes(key)) {
-      return { ok: false, error: "esse handle já está em uso (neste navegador)." };
-    }
-    list.push(key);
-    localStorage.setItem(USERNAMES_KEY, JSON.stringify(list));
-    return { ok: true };
-  };
-
   modeTag.textContent = "modo: local (sem Firebase configurado)";
   setConnected(true, "local — só entre abas deste navegador");
 }
@@ -460,9 +339,6 @@ function setConnected(ok, label){
   connLabel.textContent = label || (ok ? "conectado" : "desconectado");
 }
 
-// ------------------------------------------------------------
-// boot
-// ------------------------------------------------------------
 (async function boot(){
   setConnected(false, "conectando…");
   if (isConfigured) {
@@ -482,10 +358,9 @@ function setConnected(ok, label){
 // ------------------------------------------------------------
 async function handleRoll(){
   if (rolling || !submitRoll) return;
-  if (!USER_HANDLE) {
-    showUsernameModal();
-    return;
-  }
+  const handle = await ensureHandle();
+  if (!handle) return;
+
   outcomeBox.hidden = true;
   const value = 1 + Math.floor(Math.random() * 6);
   await playRollAnimation(value);
@@ -508,8 +383,11 @@ rollBtn.addEventListener("click", handleRoll);
 
 window.addEventListener("keydown", (ev) => {
   if (ev.code !== "Space" || ev.repeat) return;
-  const modalOpen = !usernameOverlay.classList.contains("hidden");
-  if (modalOpen) return; // espaço dentro do modal não deve rolar o dado
+  if (isModalOpen()) return;
+  const activeTag = document.activeElement && document.activeElement.tagName;
+  if (activeTag === "INPUT" || activeTag === "TEXTAREA") return;
+  const diceTabActive = document.getElementById("tabDice").classList.contains("active");
+  if (!diceTabActive) return;
   ev.preventDefault();
   handleRoll();
 });
