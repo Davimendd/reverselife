@@ -97,7 +97,7 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 
 **Ferimentos e limitações**: um campo de texto livre na ficha, editável por quem criou a campanha OU por quem criou aquela ficha específica.
 
-**Kit médico**: tanto o narrador (criador da campanha) quanto quem criou a ficha podem adicionar kits. Usar um kit reduz o dano em 30 pontos percentuais e consome uma unidade — o campo de ferimentos continua livre para editar manualmente caso o kit também resolva alguma limitação registrada ali.
+**Kit médico**: só o narrador (criador da campanha) pode adicionar ou remover kits médicos de uma ficha. Quem criou a ficha pode apenas usar/gastar os kits que ela já tiver. Usar um kit reduz o dano em 30 pontos percentuais e consome uma unidade — o campo de ferimentos continua livre para editar manualmente caso o kit também resolva alguma limitação registrada ali.
 
 **⚠️ Sobre segurança:** como o site não tem login/senha (só handles únicos escolhidos livremente), as permissões de "só o narrador pode..." são aplicadas apenas pela interface — o navegador simplesmente esconde os botões de quem não tem permissão. Isso impede cliques acidentais, mas não é uma trava criptográfica: alguém com conhecimento técnico poderia, em teoria, chamar as funções diretamente. Para um sistema realmente seguro contra isso, seria necessário adicionar Firebase Authentication (login de verdade) e regras do Firestore que verifiquem o usuário autenticado — o que está fora do escopo atual, mas pode ser adicionado depois se for importante para o seu uso.
 

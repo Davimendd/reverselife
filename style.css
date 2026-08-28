@@ -702,6 +702,14 @@ body{
   border-color:#4fd67a;
   color:#4fd67a;
 }
+.medkit-actions .btn-mini[data-action="remove-kit"]{
+  border-color:#3a1a1a;
+  color:#c88a8a;
+}
+.medkit-actions .btn-mini[data-action="remove-kit"]:hover:not(:disabled){
+  border-color:var(--red-deep);
+  color:var(--red-bright);
+}
 
 /* ---------- username modal ---------- */
 

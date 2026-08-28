@@ -506,7 +506,8 @@ function renderCharacterCard(character){
   const isCharCreator = !!(handle && character.creator && handle.toLowerCase() === character.creator.toLowerCase());
   const canEditDamage = isCampaignCreator;
   const canEditInjuries = isCampaignCreator || isCharCreator;
-  const canManageMedkit = isCampaignCreator || isCharCreator;
+  const canManageMedkit = isCampaignCreator; // só o narrador adiciona/remove kits
+  const canUseMedkit = isCampaignCreator || isCharCreator; // quem criou a ficha pode gastar os kits que ela já tem
 
   const damage = clampDamage(character.damage || 0);
   const status = damageStatus(damage);
@@ -573,8 +574,9 @@ function renderCharacterCard(character){
       <div class="medkit-row">
         <span class="medkit-count">🩹 kits médicos: <b>${medkits}</b></span>
         <div class="medkit-actions">
+          ${canManageMedkit ? `<button class="btn-mini" data-action="remove-kit" ${medkits > 0 ? "" : "disabled"}>- kit</button>` : ""}
           ${canManageMedkit ? `<button class="btn-mini" data-action="add-kit">+ kit</button>` : ""}
-          ${canManageMedkit ? `<button class="btn-mini" data-action="use-kit" ${(medkits > 0 && damage > 0) ? "" : "disabled"}>usar kit (-30%)</button>` : ""}
+          ${canUseMedkit ? `<button class="btn-mini" data-action="use-kit" ${(medkits > 0 && damage > 0) ? "" : "disabled"}>usar kit (-30%)</button>` : ""}
         </div>
       </div>
     </div>
@@ -618,6 +620,17 @@ function renderCharacterCard(character){
           .catch((err) => console.error("Falha ao adicionar kit médico:", err));
       });
     }
+    const removeBtn = card.querySelector('[data-action="remove-kit"]');
+    if (removeBtn) {
+      removeBtn.addEventListener("click", () => {
+        if (medkits <= 0) return;
+        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { medkits: medkits - 1 })
+          .catch((err) => console.error("Falha ao remover kit médico:", err));
+      });
+    }
+  }
+
+  if (canUseMedkit) {
     const useBtn = card.querySelector('[data-action="use-kit"]');
     if (useBtn) {
       useBtn.addEventListener("click", () => {
