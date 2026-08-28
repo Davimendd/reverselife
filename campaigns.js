@@ -521,19 +521,25 @@ function renderCharacterCard(character){
       : `<div class="character-photo" style="display:flex;align-items:center;justify-content:center;font-size:40px;">🕯️</div>`
     }
     <div class="character-body">
-      <div>
+      <div class="character-identity">
         <div class="character-name">${escapeHtml(character.fullName)}${damage >= 100 ? " ☠️" : ""}</div>
-        <div class="character-gender">${escapeHtml(character.gender || "não informado")}</div>
+        <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
       </div>
 
       <div class="character-traits">
-        <span><span class="trait-label">força:</span> <span class="trait-strength">${escapeHtml(character.strength || "—")}</span></span>
-        <span><span class="trait-label">fraqueza:</span> <span class="trait-weakness">${escapeHtml(character.weakness || "—")}</span></span>
+        <div class="trait-chip trait-strength">
+          <span class="trait-chip-label">⚔️ ponto forte</span>
+          <span class="trait-chip-value">${escapeHtml(character.strength || "—")}</span>
+        </div>
+        <div class="trait-chip trait-weakness">
+          <span class="trait-chip-label">☠️ ponto fraco</span>
+          <span class="trait-chip-value">${escapeHtml(character.weakness || "—")}</span>
+        </div>
       </div>
 
-      <div class="damage-block">
+      <div class="damage-section">
         <div class="damage-head">
-          <span>dano</span>
+          <span>dano acumulado</span>
           <span class="damage-status ${status.cls}">${status.label} · ${damage}%</span>
         </div>
         <div class="damage-bar">
@@ -541,13 +547,19 @@ function renderCharacterCard(character){
         </div>
 
         ${canEditDamage ? `
-          <div class="damage-controls">
-            <button class="btn-mini" data-action="dmg" data-delta="-10">-10</button>
-            <button class="btn-mini" data-action="dmg" data-delta="-5">-5</button>
-            <button class="btn-mini" data-action="dmg" data-delta="5">+5</button>
-            <button class="btn-mini" data-action="dmg" data-delta="10">+10</button>
-            <input type="number" class="damage-input" min="0" max="100" placeholder="%" data-action="dmg-input">
-            <button class="btn-mini" data-action="dmg-apply">aplicar</button>
+          <div class="damage-tool">
+            <span class="damage-tool-label">ajuste rápido</span>
+            <div class="damage-quick">
+              <button class="btn-mini" data-action="dmg" data-delta="-10">-10%</button>
+              <button class="btn-mini" data-action="dmg" data-delta="-5">-5%</button>
+              <button class="btn-mini" data-action="dmg" data-delta="5">+5%</button>
+              <button class="btn-mini" data-action="dmg" data-delta="10">+10%</button>
+            </div>
+            <div class="damage-exact">
+              <span class="damage-exact-label">definir valor exato:</span>
+              <input type="number" class="damage-input" min="0" max="100" placeholder="0-100" data-action="dmg-input">
+              <button class="btn-mini damage-apply-btn" data-action="dmg-apply">aplicar</button>
+            </div>
           </div>
         ` : ""}
       </div>
@@ -562,7 +574,7 @@ function renderCharacterCard(character){
         <span class="medkit-count">🩹 kits médicos: <b>${medkits}</b></span>
         <div class="medkit-actions">
           ${canManageMedkit ? `<button class="btn-mini" data-action="add-kit">+ kit</button>` : ""}
-          ${canManageMedkit ? `<button class="btn-mini" data-action="use-kit" ${(medkits > 0 && damage > 0) ? "" : "disabled"}>usar kit (-30% dano)</button>` : ""}
+          ${canManageMedkit ? `<button class="btn-mini" data-action="use-kit" ${(medkits > 0 && damage > 0) ? "" : "disabled"}>usar kit (-30%)</button>` : ""}
         </div>
       </div>
     </div>
