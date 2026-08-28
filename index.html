@@ -117,7 +117,7 @@
   <div class="modal-card">
     <div class="terminal-bar">
       <div class="terminal-dots"><span></span><span></span><span></span></div>
-      <span class="terminal-title">/bin/nova_ficha</span>
+      <span class="terminal-title" id="characterModalTitle">/bin/nova_ficha</span>
       <button class="modal-close" id="characterModalClose" aria-label="Fechar">✕</button>
     </div>
     <div class="modal-body">
@@ -147,12 +147,13 @@
 
       <label class="modal-label" for="charPhoto">foto do personagem</label>
       <input type="file" id="charPhoto" class="modal-file" accept="image/*">
+      <p class="modal-rules" id="charPhotoHint"></p>
       <div class="image-preview" id="charPhotoPreview" hidden><img alt="Pré-visualização"></div>
 
       <p class="modal-error" id="characterError"></p>
 
       <button class="roll-btn" id="characterSubmit">
-        <span class="roll-btn-text">CRIAR FICHA</span>
+        <span class="roll-btn-text" id="characterSubmitText">CRIAR FICHA</span>
       </button>
     </div>
   </div>

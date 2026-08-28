@@ -109,6 +109,8 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 
 **Ferimentos e limitações**: um campo de texto livre na ficha, editável por quem criou a campanha OU por quem criou aquela ficha específica.
 
+**Editar ficha**: quem criou uma ficha pode editá-la depois de pronta — nome completo, gênero, ponto forte, ponto fraco e foto — através do botão "✎ editar" que aparece no topo do card. Ao trocar a foto, a antiga é substituída; deixando o campo de foto em branco, a foto atual é mantida. Dano, ferimentos e kits médicos continuam com suas próprias regras de permissão, separadas dessa edição.
+
 **Kit médico**: só o narrador (criador da campanha) pode adicionar ou remover kits médicos de uma ficha. Quem criou a ficha pode apenas usar/gastar os kits que ela já tiver. Usar um kit reduz o dano em 30 pontos percentuais e consome uma unidade — o campo de ferimentos continua livre para editar manualmente caso o kit também resolva alguma limitação registrada ali.
 
 **⚠️ Sobre segurança:** com login de verdade, as permissões agora são baseadas na conta autenticada (`uid`) e podem ser aplicadas nas regras do Firestore abaixo — não é mais só a interface escondendo botões. Ainda assim, as regras abaixo autorizam a escrita para "narrador da campanha OU dono da ficha" de forma ampla (por simplicidade); elas não distinguem no servidor, por exemplo, que só o narrador pode mexer no dano enquanto o dono da ficha só pode editar ferimentos — essa distinção mais fina continua sendo feita pela interface (que esconde os botões certos para cada pessoa). Para separar isso também no servidor seria necessário usar Cloud Functions ou regras bem mais elaboradas, o que fica fora do escopo de um site estático como este.

@@ -26,15 +26,18 @@ const campaignSubmit = document.getElementById("campaignSubmit");
 
 const createCharacterBtn = document.getElementById("createCharacterBtn");
 const characterModal = document.getElementById("characterModal");
+const characterModalTitle = document.getElementById("characterModalTitle");
 const characterModalClose = document.getElementById("characterModalClose");
 const charName = document.getElementById("charName");
 const charGender = document.getElementById("charGender");
 const charStrength = document.getElementById("charStrength");
 const charWeakness = document.getElementById("charWeakness");
 const charPhoto = document.getElementById("charPhoto");
+const charPhotoHint = document.getElementById("charPhotoHint");
 const charPhotoPreview = document.getElementById("charPhotoPreview");
 const characterError = document.getElementById("characterError");
 const characterSubmit = document.getElementById("characterSubmit");
+const characterSubmitText = document.getElementById("characterSubmitText");
 
 // ------------------------------------------------------------
 // helpers de imagem: redimensiona no navegador e converte para
@@ -91,7 +94,8 @@ const campaignsAPI = {
   listen: null,
   createCharacter: null,
   listenCharacters: null,
-  patchCharacter: null
+  patchCharacter: null,
+  updateCharacterInfo: null
 };
 
 async function initFirebaseBackend(){
@@ -143,6 +147,15 @@ async function initFirebaseBackend(){
   };
 
   campaignsAPI.patchCharacter = async (campaignId, characterId, patch) => {
+    await updateDoc(doc(db, "campaigns", campaignId, "characters", characterId), patch);
+  };
+
+  campaignsAPI.updateCharacterInfo = async (campaignId, characterId, { fullName, gender, strength, weakness, photoFile }) => {
+    const patch = { fullName, gender, strength, weakness };
+    if (photoFile) {
+      const { dataUrl } = await compressImage(photoFile, 480, 0.72);
+      patch.photoUrl = dataUrl;
+    }
     await updateDoc(doc(db, "campaigns", campaignId, "characters", characterId), patch);
   };
 
@@ -242,6 +255,15 @@ function initLocalBackend(){
     writeCharacters(campaignId, list);
     notifyCharacters(campaignId);
     if (channel) channel.postMessage({ type: "character", campaignId });
+  };
+
+  campaignsAPI.updateCharacterInfo = async (campaignId, characterId, { fullName, gender, strength, weakness, photoFile }) => {
+    const patch = { fullName, gender, strength, weakness };
+    if (photoFile) {
+      const { dataUrl } = await compressImage(photoFile, 480, 0.72);
+      patch.photoUrl = dataUrl;
+    }
+    await campaignsAPI.patchCharacter(campaignId, characterId, patch);
   };
 
   campaignsModeEl.textContent = "modo: local (sem Firebase configurado — só entre abas deste navegador)";
@@ -415,27 +437,42 @@ campaignSubmit.addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------
-// modal: criar personagem
+// modal: criar / editar personagem
 // ------------------------------------------------------------
-function openCharacterModal(){
-  charName.value = "";
-  charGender.value = "";
-  charStrength.value = "";
-  charWeakness.value = "";
+let editingCharacter = null; // null = criando novo · objeto = editando ficha existente
+
+function openCharacterModal(character){
+  editingCharacter = character || null;
+
+  charName.value = character ? character.fullName || "" : "";
+  charGender.value = character ? character.gender || "" : "";
+  charStrength.value = character ? character.strength || "" : "";
+  charWeakness.value = character ? character.weakness || "" : "";
   charPhoto.value = "";
-  charPhotoPreview.hidden = true;
+  if (character && character.photoUrl) {
+    charPhotoPreview.querySelector("img").src = character.photoUrl;
+    charPhotoPreview.hidden = false;
+  } else {
+    charPhotoPreview.hidden = true;
+  }
   characterError.textContent = "";
+
+  characterModalTitle.textContent = character ? "/bin/editar_ficha" : "/bin/nova_ficha";
+  characterSubmitText.textContent = character ? "SALVAR ALTERAÇÕES" : "CRIAR FICHA";
+  charPhotoHint.textContent = character ? "deixe em branco para manter a foto atual" : "";
+
   characterModal.classList.remove("hidden");
   setTimeout(() => charName.focus(), 50);
 }
 function closeCharacterModal(){
   characterModal.classList.add("hidden");
+  editingCharacter = null;
 }
 
 createCharacterBtn.addEventListener("click", async () => {
   const handle = await ensureHandle();
   if (!handle) return;
-  openCharacterModal();
+  openCharacterModal(null);
 });
 characterModalClose.addEventListener("click", closeCharacterModal);
 
@@ -452,22 +489,41 @@ characterSubmit.addEventListener("click", async () => {
     characterError.textContent = "informe o nome completo do personagem.";
     return;
   }
-  if (!campaignsAPI.createCharacter) {
-    characterError.textContent = "backend ainda não carregou, tente novamente em instantes.";
-    return;
-  }
 
-  characterSubmit.disabled = true;
-  characterError.textContent = "criando ficha...";
+  const isEditing = !!editingCharacter;
 
-  try {
-    await campaignsAPI.createCharacter(currentCampaign.id, { fullName, gender, strength, weakness, photoFile });
-    characterSubmit.disabled = false;
-    closeCharacterModal();
-  } catch (err) {
-    console.error("Falha ao criar personagem:", err);
-    characterSubmit.disabled = false;
-    characterError.textContent = "erro ao criar ficha. tente novamente.";
+  if (isEditing) {
+    if (!campaignsAPI.updateCharacterInfo) {
+      characterError.textContent = "backend ainda não carregou, tente novamente em instantes.";
+      return;
+    }
+    characterSubmit.disabled = true;
+    characterError.textContent = "salvando alterações...";
+    try {
+      await campaignsAPI.updateCharacterInfo(currentCampaign.id, editingCharacter.id, { fullName, gender, strength, weakness, photoFile });
+      characterSubmit.disabled = false;
+      closeCharacterModal();
+    } catch (err) {
+      console.error("Falha ao editar personagem:", err);
+      characterSubmit.disabled = false;
+      characterError.textContent = "erro ao salvar alterações. tente novamente.";
+    }
+  } else {
+    if (!campaignsAPI.createCharacter) {
+      characterError.textContent = "backend ainda não carregou, tente novamente em instantes.";
+      return;
+    }
+    characterSubmit.disabled = true;
+    characterError.textContent = "criando ficha...";
+    try {
+      await campaignsAPI.createCharacter(currentCampaign.id, { fullName, gender, strength, weakness, photoFile });
+      characterSubmit.disabled = false;
+      closeCharacterModal();
+    } catch (err) {
+      console.error("Falha ao criar personagem:", err);
+      characterSubmit.disabled = false;
+      characterError.textContent = "erro ao criar ficha. tente novamente.";
+    }
   }
 });
 
@@ -536,8 +592,11 @@ function renderCharacterCard(character){
     }
     <div class="character-body">
       <div class="character-identity">
-        <div class="character-name">${escapeHtml(character.fullName)}${damage >= 100 ? " ☠️" : ""}</div>
-        <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
+        <div>
+          <div class="character-name">${escapeHtml(character.fullName)}${damage >= 100 ? " ☠️" : ""}</div>
+          <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
+        </div>
+        ${isCharCreator ? `<button class="btn-mini" data-action="edit-char">✎ editar</button>` : ""}
       </div>
 
       <div class="character-traits">
@@ -596,6 +655,13 @@ function renderCharacterCard(character){
   `;
 
   // ---- eventos ----
+  if (isCharCreator) {
+    const editBtn = card.querySelector('[data-action="edit-char"]');
+    if (editBtn) {
+      editBtn.addEventListener("click", () => openCharacterModal(character));
+    }
+  }
+
   if (canEditDamage) {
     card.querySelectorAll('[data-action="dmg"]').forEach((btn) => {
       btn.addEventListener("click", () => {
