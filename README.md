@@ -142,14 +142,17 @@ service cloud.firestore {
     match /campaigns/{campaignId} {
       allow read: if true;
       allow create: if request.auth != null;
-      allow update: if request.auth != null
-                    && request.auth.uid == resource.data.creatorUid;
+      allow update: if request.auth != null && (
+        !('creatorUid' in resource.data) ||
+        request.auth.uid == resource.data.creatorUid
+      );
       allow delete: if false;
 
       match /characters/{characterId} {
         allow read: if true;
         allow create: if request.auth != null;
         allow update: if request.auth != null && (
+          !('creatorUid' in resource.data) ||
           request.auth.uid == resource.data.creatorUid ||
           request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
         );
@@ -160,7 +163,11 @@ service cloud.firestore {
 }
 ```
 
+A condição `!('creatorUid' in resource.data)` existe para não travar campanhas/fichas criadas **antes** de o site ter login (elas não têm esse campo salvo) — nesses casos, qualquer pessoa logada ainda consegue editar. Fichas e campanhas criadas depois do login já vêm com `creatorUid` preenchido e passam a valer só para quem criou.
+
 Sem Firebase configurado, login, campanhas e personagens funcionam em modo local (localStorage + BroadcastChannel), com as imagens guardadas como base64 — funciona só entre abas do mesmo navegador, ideal para testar antes de configurar.
+
+**Se aparecer "acesso negado pelo Firestore" ao salvar:** normalmente é porque as regras no console do Firebase ainda não foram atualizadas para a versão acima — copie o bloco de novo em **Firestore Database > Regras** e publique. Se o erro persistir, abra o console do navegador (F12) para ver o código de erro exato.
 
 ## Como funciona a rolagem
 

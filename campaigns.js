@@ -303,6 +303,19 @@ function escapeHtml(str){
   return div.innerHTML;
 }
 
+function describeError(err, fallback){
+  const code = err && err.code;
+  if (code === "permission-denied") {
+    return "acesso negado pelo Firestore — confira se as regras foram atualizadas (ver README) e se você está logado.";
+  }
+  if (code === "unavailable") {
+    return "sem conexão com o Firestore no momento. tente de novo em instantes.";
+  }
+  if (code) return `${fallback} (${code})`;
+  if (err && err.message) return `${fallback} (${err.message})`;
+  return `${fallback} tente novamente.`;
+}
+
 // ------------------------------------------------------------
 // lista de campanhas
 // ------------------------------------------------------------
@@ -432,7 +445,7 @@ campaignSubmit.addEventListener("click", async () => {
   } catch (err) {
     console.error("Falha ao criar campanha:", err);
     campaignSubmit.disabled = false;
-    campaignError.textContent = "erro ao criar campanha. tente novamente.";
+    campaignError.textContent = describeError(err, "erro ao criar campanha.");
   }
 });
 
@@ -506,7 +519,7 @@ characterSubmit.addEventListener("click", async () => {
     } catch (err) {
       console.error("Falha ao editar personagem:", err);
       characterSubmit.disabled = false;
-      characterError.textContent = "erro ao salvar alterações. tente novamente.";
+      characterError.textContent = describeError(err, "erro ao salvar alterações.");
     }
   } else {
     if (!campaignsAPI.createCharacter) {
@@ -522,7 +535,7 @@ characterSubmit.addEventListener("click", async () => {
     } catch (err) {
       console.error("Falha ao criar personagem:", err);
       characterSubmit.disabled = false;
-      characterError.textContent = "erro ao criar ficha. tente novamente.";
+      characterError.textContent = describeError(err, "erro ao criar ficha.");
     }
   }
 });
