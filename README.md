@@ -8,7 +8,7 @@ Site com um dado de 6 lados e um terminal onde toda rolagem feita por qualquer p
 - `style.css` — identidade visual (preto/vermelho, terminal, glitch no título)
 - `firebase-config.js` — onde você cola as credenciais do seu Firebase
 - `firebase-core.js` — inicialização compartilhada do Firebase (Firestore + Storage)
-- `identity.js` — escolha e reserva do handle único
+- `identity.js` — login, criar conta e sessão (Firebase Authentication)
 - `sound.js` — efeitos sonoros sintetizados (sem arquivos de áudio)
 - `app.js` — lógica do dado, animação e feed em tempo real
 - `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos e kits médicos
@@ -35,33 +35,45 @@ Passo a passo:
      match /databases/{database}/documents {
        match /rolls/{roll} {
          allow read: if true;
-         allow create: if true;
+         allow create: if request.auth != null;
          allow update, delete: if false;
        }
        match /usernames/{username} {
          allow read: if true;
-         allow create: if !exists(/databases/$(database)/documents/usernames/$(username));
+         allow create: if request.auth != null
+                       && !exists(/databases/$(database)/documents/usernames/$(username));
+         allow update, delete: if false;
+       }
+       match /users/{uid} {
+         allow read: if request.auth != null && request.auth.uid == uid;
+         allow create: if request.auth != null && request.auth.uid == uid;
          allow update, delete: if false;
        }
      }
    }
    ```
 
-   A coleção `usernames` é o que garante que dois visitantes não consigam escolher o mesmo handle: cada nome vira o ID de um documento, e só é possível criar o documento se ele ainda não existir.
+   A coleção `usernames` é o que garante que duas contas não consigam escolher o mesmo handle: cada nome vira o ID de um documento, e só é possível criar o documento se ele ainda não existir. A coleção `users` guarda, para cada conta logada (`uid`), qual é o seu handle.
 
-4. Vá em **Configurações do projeto** (ícone de engrenagem) → role até **Seus apps** → clique no ícone `</>` para criar um app Web.
-5. Copie o objeto `firebaseConfig` gerado e cole no arquivo `firebase-config.js`, substituindo os valores `"COLOQUE_AQUI"`.
-6. Hospede os arquivos em qualquer lugar que sirva HTML estático (Firebase Hosting, Vercel, Netlify, GitHub Pages etc.) ou rode localmente com um servidor.
+4. Vá em **Build > Authentication** → **Sign-in method** → ative o provedor **E-mail/senha**. Sem isso, ninguém consegue criar conta ou entrar no site.
+5. Vá em **Configurações do projeto** (ícone de engrenagem) → role até **Seus apps** → clique no ícone `</>` para criar um app Web.
+6. Copie o objeto `firebaseConfig` gerado e cole no arquivo `firebase-config.js`, substituindo os valores `"COLOQUE_AQUI"`.
+7. Hospede os arquivos em qualquer lugar que sirva HTML estático (Firebase Hosting, Vercel, Netlify, GitHub Pages etc.) ou rode localmente com um servidor.
 
 Assim que as credenciais forem preenchidas, o site detecta automaticamente e passa a usar o Firestore — o rodapé do site mostra "modo: online (Firebase)" quando isso acontece.
 
-## Como funciona o handle (nome de usuário)
+## Login e contas
 
-- Na primeira visita, o site pede que a pessoa escolha um handle (3–16 caracteres: letras, números e underscore).
-- O nome é reservado de forma única: se alguém já estiver usando aquele handle (em qualquer lugar, com Firebase configurado), o site recusa e pede outro.
-- Uma vez confirmado, o handle fica salvo no navegador (`localStorage`), então a pessoa não precisa escolher de novo a cada visita.
-- O link "trocar", ao lado do handle no topo da página, libera a pessoa para escolher outro nome (o antigo continua reservado e não pode ser reutilizado por ninguém).
-- Sem login, sem senha — só um nome único por handle.
+O site agora exige uma conta de verdade (e-mail + senha via **Firebase Authentication**) para rolar o dado ou mexer em campanhas:
+
+- **Criar conta**: e-mail, senha (mínimo 6 caracteres) e um handle único (3–16 caracteres: letras, números e underscore). O handle continua sendo o nome exibido no terminal e nas fichas.
+- **Entrar**: e-mail e senha. A sessão fica salva pelo próprio Firebase — ao recarregar a página ou voltar depois, a pessoa continua logada automaticamente.
+- **Esqueci minha senha**: envia um e-mail de recuperação (só funciona com Firebase configurado).
+- **Sair**: botão "sair" no topo, ao lado do handle.
+
+Com login de verdade, as permissões de campanha (só o narrador altera dano/kits, etc.) agora são baseadas na conta autenticada (`uid`), não mais só num nome escolhido livremente no navegador — o que torna as regras do Firestore abaixo capazes de aplicar essas permissões de verdade no servidor, e não só esconder botões na interface.
+
+⚠️ **Modo local (sem Firebase configurado):** o site continua funcionando para testes, com um sistema de contas simplificado guardado no `localStorage` — mas as senhas ficam salvas em texto simples no navegador, sem nenhuma segurança real. Use o modo local só para experimentar o site antes de configurar o Firebase; nunca reutilize uma senha de verdade nele.
 
 ## Sons
 
@@ -99,9 +111,9 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 
 **Kit médico**: só o narrador (criador da campanha) pode adicionar ou remover kits médicos de uma ficha. Quem criou a ficha pode apenas usar/gastar os kits que ela já tiver. Usar um kit reduz o dano em 30 pontos percentuais e consome uma unidade — o campo de ferimentos continua livre para editar manualmente caso o kit também resolva alguma limitação registrada ali.
 
-**⚠️ Sobre segurança:** como o site não tem login/senha (só handles únicos escolhidos livremente), as permissões de "só o narrador pode..." são aplicadas apenas pela interface — o navegador simplesmente esconde os botões de quem não tem permissão. Isso impede cliques acidentais, mas não é uma trava criptográfica: alguém com conhecimento técnico poderia, em teoria, chamar as funções diretamente. Para um sistema realmente seguro contra isso, seria necessário adicionar Firebase Authentication (login de verdade) e regras do Firestore que verifiquem o usuário autenticado — o que está fora do escopo atual, mas pode ser adicionado depois se for importante para o seu uso.
+**⚠️ Sobre segurança:** com login de verdade, as permissões agora são baseadas na conta autenticada (`uid`) e podem ser aplicadas nas regras do Firestore abaixo — não é mais só a interface escondendo botões. Ainda assim, as regras abaixo autorizam a escrita para "narrador da campanha OU dono da ficha" de forma ampla (por simplicidade); elas não distinguem no servidor, por exemplo, que só o narrador pode mexer no dano enquanto o dono da ficha só pode editar ferimentos — essa distinção mais fina continua sendo feita pela interface (que esconde os botões certos para cada pessoa). Para separar isso também no servidor seria necessário usar Cloud Functions ou regras bem mais elaboradas, o que fica fora do escopo de um site estático como este.
 
-**Sobre as imagens:** o Firebase Storage passou a exigir o plano pago (Blaze) para novos projetos, então este site **não usa Storage**. As imagens de campanha e de personagem são redimensionadas no navegador (até 640px ou 480px de lado, JPEG comprimido) e guardadas como texto base64 direto dentro do próprio documento no Firestore — que continua 100% no plano gratuito (Spark). Isso mantém cada documento bem abaixo do limite de 1 MB do Firestore, então não há custo extra além do que você já paga (nada, no plano gratuito) pelas rolagens e handles.
+**Sobre as imagens:** o Firebase Storage passou a exigir o plano pago (Blaze) para novos projetos, então este site **não usa Storage**. As imagens de campanha e de personagem são redimensionadas no navegador (até 640px ou 480px de lado, JPEG comprimido) e guardadas como texto base64 direto dentro do próprio documento no Firestore — que continua 100% no plano gratuito (Spark). Isso mantém cada documento bem abaixo do limite de 1 MB do Firestore, então não há custo extra além do que você já paga (nada, no plano gratuito) pelas rolagens e contas.
 
 ### Regras do Firestore (adicionar às já existentes)
 
@@ -111,24 +123,34 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /rolls/{roll} {
       allow read: if true;
-      allow create: if true;
+      allow create: if request.auth != null;
       allow update, delete: if false;
     }
     match /usernames/{username} {
       allow read: if true;
-      allow create: if !exists(/databases/$(database)/documents/usernames/$(username));
+      allow create: if request.auth != null
+                    && !exists(/databases/$(database)/documents/usernames/$(username));
+      allow update, delete: if false;
+    }
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid;
       allow update, delete: if false;
     }
     match /campaigns/{campaignId} {
       allow read: if true;
-      allow create: if true;
-      allow update: if true;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null
+                    && request.auth.uid == resource.data.creatorUid;
       allow delete: if false;
 
       match /characters/{characterId} {
         allow read: if true;
-        allow create: if true;
-        allow update: if true;
+        allow create: if request.auth != null;
+        allow update: if request.auth != null && (
+          request.auth.uid == resource.data.creatorUid ||
+          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+        );
         allow delete: if false;
       }
     }
@@ -136,7 +158,7 @@ service cloud.firestore {
 }
 ```
 
-Sem Firebase configurado, campanhas e personagens funcionam em modo local (localStorage + BroadcastChannel), com as imagens guardadas como base64 — funciona só entre abas do mesmo navegador, ideal para testar antes de configurar.
+Sem Firebase configurado, login, campanhas e personagens funcionam em modo local (localStorage + BroadcastChannel), com as imagens guardadas como base64 — funciona só entre abas do mesmo navegador, ideal para testar antes de configurar.
 
 ## Como funciona a rolagem
 

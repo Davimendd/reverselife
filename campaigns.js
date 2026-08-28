@@ -1,5 +1,5 @@
 import { isConfigured, getDb, getFirestoreFns } from "./firebase-core.js";
-import { getCurrentHandle, ensureHandle } from "./identity.js";
+import { getCurrentHandle, getCurrentUid, ensureHandle } from "./identity.js";
 
 // ------------------------------------------------------------
 // elementos
@@ -100,13 +100,14 @@ async function initFirebaseBackend(){
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
+    const creatorUid = getCurrentUid();
     let imageUrl = "";
     if (imageFile) {
       const { dataUrl } = await compressImage(imageFile, 640, 0.72);
       imageUrl = dataUrl;
     }
     const docRef = await addDoc(collection(db, "campaigns"), {
-      name, description, creator, imageUrl, createdAt: serverTimestamp()
+      name, description, creator, creatorUid, imageUrl, createdAt: serverTimestamp()
     });
     return docRef.id;
   };
@@ -120,6 +121,7 @@ async function initFirebaseBackend(){
 
   campaignsAPI.createCharacter = async (campaignId, { fullName, gender, strength, weakness, photoFile }) => {
     const creator = getCurrentHandle();
+    const creatorUid = getCurrentUid();
     let photoUrl = "";
     if (photoFile) {
       const { dataUrl } = await compressImage(photoFile, 480, 0.72);
@@ -128,7 +130,7 @@ async function initFirebaseBackend(){
     const charsRef = collection(db, "campaigns", campaignId, "characters");
     const docRef = await addDoc(charsRef, {
       fullName, gender, strength, weakness, photoUrl,
-      creator, damage: 0, injuries: "", medkits: 0, createdAt: serverTimestamp()
+      creator, creatorUid, damage: 0, injuries: "", medkits: 0, createdAt: serverTimestamp()
     });
     return docRef.id;
   };
@@ -185,6 +187,7 @@ function initLocalBackend(){
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
+    const creatorUid = getCurrentUid();
     let imageUrl = "";
     if (imageFile) {
       const { dataUrl } = await compressImage(imageFile, 640, 0.72);
@@ -192,7 +195,7 @@ function initLocalBackend(){
     }
     const id = `c_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const list = readCampaigns();
-    list.unshift({ id, name, description, imageUrl, creator, createdAt: Date.now() });
+    list.unshift({ id, name, description, imageUrl, creator, creatorUid, createdAt: Date.now() });
     writeCampaigns(list);
     notifyCampaigns();
     if (channel) channel.postMessage({ type: "campaign" });
@@ -207,6 +210,7 @@ function initLocalBackend(){
 
   campaignsAPI.createCharacter = async (campaignId, { fullName, gender, strength, weakness, photoFile }) => {
     const creator = getCurrentHandle();
+    const creatorUid = getCurrentUid();
     let photoUrl = "";
     if (photoFile) {
       const { dataUrl } = await compressImage(photoFile, 480, 0.72);
@@ -214,7 +218,7 @@ function initLocalBackend(){
     }
     const id = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const list = readCharacters(campaignId);
-    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, damage: 0, injuries: "", medkits: 0, createdAt: Date.now() });
+    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, creatorUid, damage: 0, injuries: "", medkits: 0, createdAt: Date.now() });
     writeCharacters(campaignId, list);
     notifyCharacters(campaignId);
     if (channel) channel.postMessage({ type: "character", campaignId });
@@ -502,8 +506,17 @@ function renderCharacters(list){
 
 function renderCharacterCard(character){
   const handle = getCurrentHandle();
-  const isCampaignCreator = !!(handle && currentCampaign && currentCampaign.creator && handle.toLowerCase() === currentCampaign.creator.toLowerCase());
-  const isCharCreator = !!(handle && character.creator && handle.toLowerCase() === character.creator.toLowerCase());
+  const uid = getCurrentUid();
+
+  const isCampaignCreator = !!(
+    (uid && currentCampaign && currentCampaign.creatorUid && uid === currentCampaign.creatorUid) ||
+    (!currentCampaign?.creatorUid && handle && currentCampaign && currentCampaign.creator && handle.toLowerCase() === currentCampaign.creator.toLowerCase())
+  );
+  const isCharCreator = !!(
+    (uid && character.creatorUid && uid === character.creatorUid) ||
+    (!character.creatorUid && handle && character.creator && handle.toLowerCase() === character.creator.toLowerCase())
+  );
+
   const canEditDamage = isCampaignCreator;
   const canEditInjuries = isCampaignCreator || isCharCreator;
   const canManageMedkit = isCampaignCreator; // só o narrador adiciona/remove kits

@@ -14,29 +14,69 @@
 <div class="scanlines" aria-hidden="true"></div>
 <div class="noise" aria-hidden="true"></div>
 
-<!-- ===================== modal: handle único ===================== -->
+<!-- ===================== modal: login / criar conta ===================== -->
 <div class="modal-overlay" id="usernameOverlay">
   <div class="modal-card">
     <div class="terminal-bar">
       <div class="terminal-dots"><span></span><span></span><span></span></div>
-      <span class="terminal-title">/bin/registrar_handle</span>
+      <span class="terminal-title">/bin/login</span>
     </div>
     <div class="modal-body">
-      <p class="modal-line">&gt; identifique-se antes de acessar o terminal.</p>
-      <p class="modal-line">&gt; cada handle é único. uma vez escolhido, ninguém mais poderá usá-lo.</p>
-
-      <label class="modal-label" for="usernameInput">seu handle</label>
-      <div class="modal-input-row">
-        <span class="prompt">&gt;</span>
-        <input type="text" id="usernameInput" class="modal-input" maxlength="16" autocomplete="off" spellcheck="false" placeholder="ex: RAVEN_7">
+      <div class="auth-tabs" id="authTabs">
+        <button class="auth-tab active" data-auth-tab="login" type="button">entrar</button>
+        <button class="auth-tab" data-auth-tab="signup" type="button">criar conta</button>
       </div>
-      <p class="modal-rules">3–16 caracteres · letras, números e underscore</p>
-      <p class="modal-error" id="usernameError"></p>
 
-      <button class="roll-btn" id="usernameSubmit">
-        <span class="roll-btn-text">CONFIRMAR HANDLE</span>
-        <span class="roll-btn-key">[ ENTER ]</span>
-      </button>
+      <!-- ---- entrar ---- -->
+      <div class="auth-panel active" id="authLoginPanel">
+        <label class="modal-label" for="loginEmail">e-mail</label>
+        <div class="modal-input-row">
+          <span class="prompt">&gt;</span>
+          <input type="email" id="loginEmail" class="modal-input" autocomplete="username" placeholder="voce@email.com">
+        </div>
+
+        <label class="modal-label" for="loginPassword">senha</label>
+        <div class="modal-input-row">
+          <span class="prompt">&gt;</span>
+          <input type="password" id="loginPassword" class="modal-input" autocomplete="current-password" placeholder="••••••••">
+        </div>
+
+        <p class="modal-error" id="loginError"></p>
+
+        <button class="roll-btn" id="loginSubmit">
+          <span class="roll-btn-text">ENTRAR</span>
+          <span class="roll-btn-key">[ ENTER ]</span>
+        </button>
+        <button class="link-btn auth-forgot" id="forgotPasswordBtn" type="button">esqueci minha senha</button>
+      </div>
+
+      <!-- ---- criar conta ---- -->
+      <div class="auth-panel" id="authSignupPanel">
+        <label class="modal-label" for="signupHandle">seu handle</label>
+        <div class="modal-input-row">
+          <span class="prompt">&gt;</span>
+          <input type="text" id="signupHandle" class="modal-input" maxlength="16" autocomplete="off" spellcheck="false" placeholder="ex: RAVEN_7">
+        </div>
+        <p class="modal-rules">3–16 caracteres · letras, números e underscore · único no site</p>
+
+        <label class="modal-label" for="signupEmail">e-mail</label>
+        <div class="modal-input-row">
+          <span class="prompt">&gt;</span>
+          <input type="email" id="signupEmail" class="modal-input" autocomplete="username" placeholder="voce@email.com">
+        </div>
+
+        <label class="modal-label" for="signupPassword">senha</label>
+        <div class="modal-input-row">
+          <span class="prompt">&gt;</span>
+          <input type="password" id="signupPassword" class="modal-input" autocomplete="new-password" placeholder="mínimo 6 caracteres">
+        </div>
+
+        <p class="modal-error" id="signupError"></p>
+
+        <button class="roll-btn" id="signupSubmit">
+          <span class="roll-btn-text">CRIAR CONTA</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -131,7 +171,7 @@
       <span class="divider">/</span>
       <span id="userTag">handle: —</span>
       <span class="divider">/</span>
-      <button class="link-btn" id="changeHandleBtn">trocar</button>
+      <button class="link-btn" id="logoutBtn" hidden>sair</button>
       <span class="divider">/</span>
       <button class="mute-btn" id="muteBtn" aria-label="Ativar ou desativar som" title="som">🔊</button>
     </div>
