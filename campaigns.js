@@ -13,6 +13,7 @@ const backToCampaignsBtn = document.getElementById("backToCampaigns");
 const campaignHeaderEl = document.getElementById("campaignHeader");
 const characterGrid = document.getElementById("characterGrid");
 const characterEmpty = document.getElementById("characterEmpty");
+const characterSearch = document.getElementById("characterSearch");
 const eventList = document.getElementById("eventList");
 const eventLogEmpty = document.getElementById("eventLogEmpty");
 const eventCount = document.getElementById("eventCount");
@@ -492,6 +493,9 @@ function openCampaign(campaign){
 
   if (unsubscribeCharacters) unsubscribeCharacters();
   characterGrid.innerHTML = "";
+  characterSearch.value = "";
+  lastCharacterList = [];
+  expandedCharacterIds.clear();
 
   if (unsubscribeEvents) unsubscribeEvents();
   eventList.innerHTML = "";
@@ -500,7 +504,10 @@ function openCampaign(campaign){
 
   const tryListen = () => {
     if (!campaignsAPI.listenCharacters) { setTimeout(tryListen, 100); return; }
-    unsubscribeCharacters = campaignsAPI.listenCharacters(campaign.id, renderCharacters);
+    unsubscribeCharacters = campaignsAPI.listenCharacters(campaign.id, (list) => {
+      lastCharacterList = list;
+      applyCharacterFilter();
+    });
   };
   tryListen();
 
@@ -673,6 +680,23 @@ characterSubmit.addEventListener("click", async () => {
 // ------------------------------------------------------------
 // grid de personagens
 // ------------------------------------------------------------
+let lastCharacterList = [];
+
+function applyCharacterFilter(){
+  const term = characterSearch.value.trim().toLowerCase();
+  const filtered = term
+    ? lastCharacterList.filter((c) => (c.fullName || "").toLowerCase().includes(term))
+    : lastCharacterList;
+
+  characterEmpty.textContent = term
+    ? "nenhum personagem encontrado com esse nome."
+    : "nenhum personagem criado nessa campanha ainda.";
+
+  renderCharacters(filtered);
+}
+
+characterSearch.addEventListener("input", applyCharacterFilter);
+
 function renderCharacters(list){
   // preserva o texto sendo digitado no campo de ferimentos, se houver foco ativo
   let focusState = null;
@@ -703,6 +727,10 @@ function renderCharacters(list){
   }
 }
 
+// ids de personagens com a ficha expandida — persiste entre re-renders
+// (toda mudança de dado/kit/ferimento re-renderiza a lista inteira)
+const expandedCharacterIds = new Set();
+
 function renderCharacterCard(character){
   const handle = getCurrentHandle();
   const uid = getCurrentUid();
@@ -724,24 +752,34 @@ function renderCharacterCard(character){
   const damage = clampDamage(character.damage || 0);
   const status = damageStatus(damage);
   const medkits = character.medkits || 0;
+  const isExpanded = expandedCharacterIds.has(character.id);
 
   const card = document.createElement("div");
   card.className = "character-card";
 
   card.innerHTML = `
-    ${character.photoUrl
-      ? `<img class="character-photo" src="${character.photoUrl}" alt="${escapeHtml(character.fullName)}">`
-      : `<div class="character-photo" style="display:flex;align-items:center;justify-content:center;font-size:40px;">🕯️</div>`
-    }
-    <div class="character-body">
-      <div class="character-identity">
-        <div>
-          <div class="character-name">${escapeHtml(character.fullName)}${damage >= 100 ? " ☠️" : ""}</div>
-          <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
+    <div class="character-card-head" data-action="toggle-expand">
+      ${character.photoUrl
+        ? `<img class="character-thumb" src="${character.photoUrl}" alt="${escapeHtml(character.fullName)}">`
+        : `<div class="character-thumb character-thumb-placeholder">🕯️</div>`
+      }
+      <div class="character-head-info">
+        <div class="character-name-row">
+          <span class="character-name">${escapeHtml(character.fullName)}${damage >= 100 ? " ☠️" : ""}</span>
+          ${isCharCreator ? `<button class="btn-mini" data-action="edit-char">✎</button>` : ""}
         </div>
-        ${isCharCreator ? `<button class="btn-mini" data-action="edit-char">✎ editar</button>` : ""}
+        <div class="character-head-meta">
+          <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
+          <span class="damage-status-pill ${status.cls}">${status.label} · ${damage}%</span>
+        </div>
+        <div class="damage-bar mini">
+          <div class="damage-bar-fill" style="width:${damage}%; background:${status.color};"></div>
+        </div>
       </div>
+      <button class="expand-toggle ${isExpanded ? "open" : ""}" data-action="toggle-expand" aria-label="Expandir ficha">▾</button>
+    </div>
 
+    <div class="character-card-details" ${isExpanded ? "" : "hidden"}>
       <div class="character-traits">
         <div class="trait-chip trait-strength">
           <span class="trait-chip-label">⚔️ ponto forte</span>
@@ -753,18 +791,10 @@ function renderCharacterCard(character){
         </div>
       </div>
 
-      <div class="damage-section">
-        <div class="damage-head">
-          <span>dano acumulado</span>
-          <span class="damage-status ${status.cls}">${status.label} · ${damage}%</span>
-        </div>
-        <div class="damage-bar">
-          <div class="damage-bar-fill" style="width:${damage}%; background:${status.color};"></div>
-        </div>
-
-        ${canEditDamage ? `
+      ${canEditDamage ? `
+        <div class="damage-section">
           <div class="damage-tool">
-            <span class="damage-tool-label">ajuste rápido</span>
+            <span class="damage-tool-label">ajuste rápido de dano</span>
             <div class="damage-quick">
               <button class="btn-mini" data-action="dmg" data-delta="-10">-10%</button>
               <button class="btn-mini" data-action="dmg" data-delta="-5">-5%</button>
@@ -777,8 +807,8 @@ function renderCharacterCard(character){
               <button class="btn-mini damage-apply-btn" data-action="dmg-apply">aplicar</button>
             </div>
           </div>
-        ` : ""}
-      </div>
+        </div>
+      ` : ""}
 
       <div class="injuries-box">
         <span class="injuries-label">ferimentos e limitações</span>
@@ -798,6 +828,20 @@ function renderCharacterCard(character){
   `;
 
   // ---- eventos ----
+  card.querySelectorAll('[data-action="toggle-expand"]').forEach((el) => {
+    el.addEventListener("click", (ev) => {
+      // o botão "✎ editar" também fica dentro do cabeçalho clicável — não deixa o clique nele expandir/recolher
+      if (ev.target.closest('[data-action="edit-char"]')) return;
+      const details = card.querySelector(".character-card-details");
+      const toggleBtn = card.querySelector(".expand-toggle");
+      const nowOpen = details.hidden;
+      details.hidden = !nowOpen;
+      toggleBtn.classList.toggle("open", nowOpen);
+      if (nowOpen) expandedCharacterIds.add(character.id);
+      else expandedCharacterIds.delete(character.id);
+    });
+  });
+
   if (isCharCreator) {
     const editBtn = card.querySelector('[data-action="edit-char"]');
     if (editBtn) {

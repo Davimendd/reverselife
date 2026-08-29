@@ -98,6 +98,8 @@ Depois de cada rolagem, a descrição completa do resultado aparece abaixo do da
 
 Uma segunda aba, "📖 Campanhas", funciona como salas: qualquer pessoa pode criar uma campanha (nome, descrição, imagem) e qualquer pessoa que acessar o site pode entrar nela e criar uma ficha de personagem (nome completo, gênero, ponto forte, ponto fraco, foto). Todos os personagens da campanha aparecem para todo mundo.
 
+**Fichas compactas**: cada personagem aparece como uma linha compacta (miniatura, nome, gênero, barra de dano) — clique nela pra expandir e ver traços, ferramenta de dano, ferimentos e kits médicos. Isso evita ter que rolar a página inteira quando há várias fichas na campanha. Um campo de busca por nome, acima da lista, ajuda a achar uma ficha específica rapidamente.
+
 **Barra de dano (0–100%)**, com faixas de status:
 - 0–24%: estável
 - 25–49%: ferido
