@@ -758,7 +758,7 @@ function renderCharacterCard(character){
   card.className = "character-card";
 
   card.innerHTML = `
-    <div class="character-card-head" data-action="toggle-expand">
+    <div class="character-card-head">
       ${character.photoUrl
         ? `<img class="character-thumb" src="${character.photoUrl}" alt="${escapeHtml(character.fullName)}">`
         : `<div class="character-thumb character-thumb-placeholder">🕯️</div>`
@@ -776,7 +776,7 @@ function renderCharacterCard(character){
           <div class="damage-bar-fill" style="width:${damage}%; background:${status.color};"></div>
         </div>
       </div>
-      <button class="expand-toggle ${isExpanded ? "open" : ""}" data-action="toggle-expand" aria-label="Expandir ficha">▾</button>
+      <button class="expand-toggle ${isExpanded ? "open" : ""}" aria-label="Expandir ficha">▾</button>
     </div>
 
     <div class="character-card-details" ${isExpanded ? "" : "hidden"}>
@@ -828,18 +828,17 @@ function renderCharacterCard(character){
   `;
 
   // ---- eventos ----
-  card.querySelectorAll('[data-action="toggle-expand"]').forEach((el) => {
-    el.addEventListener("click", (ev) => {
-      // o botão "✎ editar" também fica dentro do cabeçalho clicável — não deixa o clique nele expandir/recolher
-      if (ev.target.closest('[data-action="edit-char"]')) return;
-      const details = card.querySelector(".character-card-details");
-      const toggleBtn = card.querySelector(".expand-toggle");
-      const nowOpen = details.hidden;
-      details.hidden = !nowOpen;
-      toggleBtn.classList.toggle("open", nowOpen);
-      if (nowOpen) expandedCharacterIds.add(character.id);
-      else expandedCharacterIds.delete(character.id);
-    });
+  const headEl = card.querySelector(".character-card-head");
+  headEl.addEventListener("click", (ev) => {
+    // o botão "✎ editar" também fica dentro do cabeçalho clicável — não deixa o clique nele expandir/recolher
+    if (ev.target.closest('[data-action="edit-char"]')) return;
+    const details = card.querySelector(".character-card-details");
+    const toggleBtn = card.querySelector(".expand-toggle");
+    const nowOpen = details.hidden;
+    details.hidden = !nowOpen;
+    toggleBtn.classList.toggle("open", nowOpen);
+    if (nowOpen) expandedCharacterIds.add(character.id);
+    else expandedCharacterIds.delete(character.id);
   });
 
   if (isCharCreator) {
