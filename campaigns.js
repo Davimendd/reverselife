@@ -13,6 +13,9 @@ const backToCampaignsBtn = document.getElementById("backToCampaigns");
 const campaignHeaderEl = document.getElementById("campaignHeader");
 const characterGrid = document.getElementById("characterGrid");
 const characterEmpty = document.getElementById("characterEmpty");
+const eventList = document.getElementById("eventList");
+const eventLogEmpty = document.getElementById("eventLogEmpty");
+const eventCount = document.getElementById("eventCount");
 
 const createCampaignBtn = document.getElementById("createCampaignBtn");
 const campaignModal = document.getElementById("campaignModal");
@@ -95,12 +98,14 @@ const campaignsAPI = {
   createCharacter: null,
   listenCharacters: null,
   patchCharacter: null,
-  updateCharacterInfo: null
+  updateCharacterInfo: null,
+  logEvent: null,
+  listenEvents: null
 };
 
 async function initFirebaseBackend(){
   const db = await getDb();
-  const { collection, addDoc, doc, updateDoc, query, orderBy, onSnapshot, serverTimestamp } = await getFirestoreFns();
+  const { collection, addDoc, doc, updateDoc, query, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
@@ -159,21 +164,41 @@ async function initFirebaseBackend(){
     await updateDoc(doc(db, "campaigns", campaignId, "characters", characterId), patch);
   };
 
+  campaignsAPI.logEvent = async (campaignId, { icon, text }) => {
+    const eventsRef = collection(db, "campaigns", campaignId, "events");
+    await addDoc(eventsRef, { icon, text, createdAt: serverTimestamp() });
+  };
+
+  campaignsAPI.listenEvents = (campaignId, callback) => {
+    const q = query(collection(db, "campaigns", campaignId, "events"), orderBy("createdAt", "desc"), limit(60));
+    return onSnapshot(q, (snap) => {
+      callback(snap.docs.map((d) => {
+        const data = d.data();
+        const date = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
+        return { id: d.id, icon: data.icon, text: data.text, date };
+      }));
+    });
+  };
+
   campaignsModeEl.textContent = "modo: online (Firebase)";
 }
 
 function initLocalBackend(){
   const CAMPAIGNS_KEY = "rl_local_campaigns";
   const charKey = (campaignId) => `rl_local_characters_${campaignId}`;
+  const eventKey = (campaignId) => `rl_local_events_${campaignId}`;
   const channel = ("BroadcastChannel" in window) ? new BroadcastChannel("reverse_life_campaigns") : null;
 
   function readCampaigns(){ try { return JSON.parse(localStorage.getItem(CAMPAIGNS_KEY) || "[]"); } catch { return []; } }
   function writeCampaigns(list){ localStorage.setItem(CAMPAIGNS_KEY, JSON.stringify(list)); }
   function readCharacters(campaignId){ try { return JSON.parse(localStorage.getItem(charKey(campaignId)) || "[]"); } catch { return []; } }
   function writeCharacters(campaignId, list){ localStorage.setItem(charKey(campaignId), JSON.stringify(list)); }
+  function readEvents(campaignId){ try { return JSON.parse(localStorage.getItem(eventKey(campaignId)) || "[]"); } catch { return []; } }
+  function writeEvents(campaignId, list){ localStorage.setItem(eventKey(campaignId), JSON.stringify(list.slice(-60))); }
 
   let campaignListeners = [];
   let characterListeners = {};
+  let eventListeners = {};
 
   function notifyCampaigns(){
     const list = readCampaigns();
@@ -183,18 +208,25 @@ function initLocalBackend(){
     const list = readCharacters(campaignId);
     (characterListeners[campaignId] || []).forEach((cb) => cb(list));
   }
+  function notifyEvents(campaignId){
+    const list = readEvents(campaignId).map((e) => ({ ...e, date: new Date(e.ts) }));
+    (eventListeners[campaignId] || []).forEach((cb) => cb(list));
+  }
 
   if (channel) {
     channel.onmessage = (ev) => {
       const msg = ev.data || {};
       if (msg.type === "campaign") notifyCampaigns();
       if (msg.type === "character") notifyCharacters(msg.campaignId);
+      if (msg.type === "event") notifyEvents(msg.campaignId);
     };
   }
   window.addEventListener("storage", (ev) => {
     if (ev.key === CAMPAIGNS_KEY) notifyCampaigns();
     else if (ev.key && ev.key.startsWith("rl_local_characters_")) {
       notifyCharacters(ev.key.slice("rl_local_characters_".length));
+    } else if (ev.key && ev.key.startsWith("rl_local_events_")) {
+      notifyEvents(ev.key.slice("rl_local_events_".length));
     }
   });
 
@@ -266,6 +298,27 @@ function initLocalBackend(){
     await campaignsAPI.patchCharacter(campaignId, characterId, patch);
   };
 
+  campaignsAPI.logEvent = async (campaignId, { icon, text }) => {
+    const event = {
+      id: `e_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      icon, text, ts: Date.now()
+    };
+    const list = readEvents(campaignId);
+    list.push(event);
+    writeEvents(campaignId, list);
+    notifyEvents(campaignId);
+    if (channel) channel.postMessage({ type: "event", campaignId });
+  };
+
+  campaignsAPI.listenEvents = (campaignId, callback) => {
+    eventListeners[campaignId] = eventListeners[campaignId] || [];
+    eventListeners[campaignId].push(callback);
+    callback(readEvents(campaignId).map((e) => ({ ...e, date: new Date(e.ts) })));
+    return () => {
+      eventListeners[campaignId] = (eventListeners[campaignId] || []).filter((cb) => cb !== callback);
+    };
+  };
+
   campaignsModeEl.textContent = "modo: local (sem Firebase configurado — só entre abas deste navegador)";
 }
 
@@ -321,6 +374,7 @@ function describeError(err, fallback){
 // ------------------------------------------------------------
 let currentCampaign = null;
 let unsubscribeCharacters = null;
+let unsubscribeEvents = null;
 
 function renderCampaignCard(campaign){
   const card = document.createElement("div");
@@ -375,6 +429,54 @@ function renderCampaignHeader(campaign){
   `;
 }
 
+// ------------------------------------------------------------
+// histórico de eventos da campanha
+// ------------------------------------------------------------
+function eventTimeLabel(date){
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function renderEventLog(events){
+  eventList.innerHTML = "";
+  eventLogEmpty.hidden = events.length > 0;
+  eventCount.textContent = `${events.length} evento${events.length === 1 ? "" : "s"}`;
+
+  // mais recente primeiro
+  [...events].reverse().forEach((ev) => {
+    const line = document.createElement("div");
+    line.className = "event-line";
+    line.innerHTML = `
+      <span class="event-icon">${ev.icon || "•"}</span>
+      <span class="event-text">${ev.text || ""}</span>
+      <span class="event-time">${ev.date ? eventTimeLabel(ev.date) : ""}</span>
+    `;
+    eventList.appendChild(line);
+  });
+}
+
+// Registra um evento no histórico da campanha atual. Não interrompe a
+// ação principal caso falhe (o histórico é um extra, não crítico).
+function logEvent(icon, text){
+  if (!currentCampaign || !campaignsAPI.logEvent) return;
+  campaignsAPI.logEvent(currentCampaign.id, { icon, text }).catch((err) => {
+    console.error("Falha ao registrar evento no histórico:", err);
+  });
+}
+
+function logDamageEvent(oldDamage, newDamage, fullName){
+  if (newDamage === oldDamage) return;
+  const handle = escapeHtml(getCurrentHandle());
+  const name = escapeHtml(fullName);
+  if (newDamage > oldDamage) {
+    logEvent("🩸", `<b>${name}</b> sofreu +${newDamage - oldDamage}% de dano (aplicado por <b>${handle}</b>) — agora em ${newDamage}%.`);
+  } else {
+    logEvent("💚", `<b>${name}</b> recuperou ${oldDamage - newDamage}% de dano (aplicado por <b>${handle}</b>) — agora em ${newDamage}%.`);
+  }
+  if (newDamage >= 100 && oldDamage < 100) {
+    logEvent("☠️", `<b>${name}</b> morreu.`);
+  }
+}
+
 function openCampaign(campaign){
   currentCampaign = campaign;
   renderCampaignHeader(campaign);
@@ -384,15 +486,27 @@ function openCampaign(campaign){
   if (unsubscribeCharacters) unsubscribeCharacters();
   characterGrid.innerHTML = "";
 
+  if (unsubscribeEvents) unsubscribeEvents();
+  eventList.innerHTML = "";
+  eventLogEmpty.hidden = false;
+  eventCount.textContent = "0 eventos";
+
   const tryListen = () => {
     if (!campaignsAPI.listenCharacters) { setTimeout(tryListen, 100); return; }
     unsubscribeCharacters = campaignsAPI.listenCharacters(campaign.id, renderCharacters);
   };
   tryListen();
+
+  const tryListenEvents = () => {
+    if (!campaignsAPI.listenEvents) { setTimeout(tryListenEvents, 100); return; }
+    unsubscribeEvents = campaignsAPI.listenEvents(campaign.id, renderEventLog);
+  };
+  tryListenEvents();
 }
 
 backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeCharacters) { unsubscribeCharacters(); unsubscribeCharacters = null; }
+  if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
   currentCampaign = null;
   campaignDetailView.hidden = true;
   campaignListView.hidden = false;
@@ -514,6 +628,7 @@ characterSubmit.addEventListener("click", async () => {
     characterError.textContent = "salvando alterações...";
     try {
       await campaignsAPI.updateCharacterInfo(currentCampaign.id, editingCharacter.id, { fullName, gender, strength, weakness, photoFile });
+      logEvent("✎", `<b>${escapeHtml(getCurrentHandle())}</b> editou a ficha de <b>${escapeHtml(fullName)}</b>.`);
       characterSubmit.disabled = false;
       closeCharacterModal();
     } catch (err) {
@@ -530,6 +645,7 @@ characterSubmit.addEventListener("click", async () => {
     characterError.textContent = "criando ficha...";
     try {
       await campaignsAPI.createCharacter(currentCampaign.id, { fullName, gender, strength, weakness, photoFile });
+      logEvent("🆕", `<b>${escapeHtml(getCurrentHandle())}</b> criou a ficha de <b>${escapeHtml(fullName)}</b>.`);
       characterSubmit.disabled = false;
       closeCharacterModal();
     } catch (err) {
@@ -681,6 +797,7 @@ function renderCharacterCard(character){
         const delta = parseInt(btn.dataset.delta, 10);
         const newDamage = clampDamage(damage + delta);
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: newDamage })
+          .then(() => logDamageEvent(damage, newDamage, character.fullName))
           .catch((err) => console.error("Falha ao atualizar dano:", err));
       });
     });
@@ -689,7 +806,9 @@ function renderCharacterCard(character){
     applyBtn.addEventListener("click", () => {
       const val = parseInt(input.value, 10);
       if (Number.isNaN(val)) return;
-      campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: clampDamage(val) })
+      const newDamage = clampDamage(val);
+      campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: newDamage })
+        .then(() => logDamageEvent(damage, newDamage, character.fullName))
         .catch((err) => console.error("Falha ao atualizar dano:", err));
       input.value = "";
     });
@@ -700,6 +819,7 @@ function renderCharacterCard(character){
     const textarea = card.querySelector(".injuries-textarea");
     saveBtn.addEventListener("click", () => {
       campaignsAPI.patchCharacter(currentCampaign.id, character.id, { injuries: textarea.value.trim() })
+        .then(() => logEvent("📝", `<b>${escapeHtml(getCurrentHandle())}</b> atualizou os ferimentos/limitações de <b>${escapeHtml(character.fullName)}</b>.`))
         .catch((err) => console.error("Falha ao salvar ferimentos:", err));
     });
   }
@@ -709,6 +829,7 @@ function renderCharacterCard(character){
     if (addBtn) {
       addBtn.addEventListener("click", () => {
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { medkits: medkits + 1 })
+          .then(() => logEvent("🩹", `<b>${escapeHtml(getCurrentHandle())}</b> adicionou um kit médico à ficha de <b>${escapeHtml(character.fullName)}</b> (agora com ${medkits + 1}).`))
           .catch((err) => console.error("Falha ao adicionar kit médico:", err));
       });
     }
@@ -717,6 +838,7 @@ function renderCharacterCard(character){
       removeBtn.addEventListener("click", () => {
         if (medkits <= 0) return;
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { medkits: medkits - 1 })
+          .then(() => logEvent("🗑️", `<b>${escapeHtml(getCurrentHandle())}</b> removeu um kit médico da ficha de <b>${escapeHtml(character.fullName)}</b> (agora com ${medkits - 1}).`))
           .catch((err) => console.error("Falha ao remover kit médico:", err));
       });
     }
@@ -729,6 +851,7 @@ function renderCharacterCard(character){
         if (medkits <= 0) return;
         const newDamage = clampDamage(damage - 30);
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: newDamage, medkits: medkits - 1 })
+          .then(() => logEvent("💊", `<b>${escapeHtml(getCurrentHandle())}</b> usou um kit médico em <b>${escapeHtml(character.fullName)}</b>: dano de ${damage}% para ${newDamage}% (kits restantes: ${medkits - 1}).`))
           .catch((err) => console.error("Falha ao usar kit médico:", err));
       });
     }
