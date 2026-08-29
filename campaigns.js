@@ -169,14 +169,20 @@ async function initFirebaseBackend(){
     await addDoc(eventsRef, { icon, text, createdAt: serverTimestamp() });
   };
 
-  campaignsAPI.listenEvents = (campaignId, callback) => {
+  campaignsAPI.listenEvents = (campaignId, callback, onError) => {
     const q = query(collection(db, "campaigns", campaignId, "events"), orderBy("createdAt", "desc"), limit(60));
     return onSnapshot(q, (snap) => {
-      callback(snap.docs.map((d) => {
+      // a query vem do mais recente pro mais antigo; invertemos para
+      // manter o mesmo contrato do backend local (mais antigo primeiro)
+      const docs = [...snap.docs].reverse();
+      callback(docs.map((d) => {
         const data = d.data();
         const date = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date();
         return { id: d.id, icon: data.icon, text: data.text, date };
       }));
+    }, (err) => {
+      console.error("Falha ao ler histórico de eventos:", err);
+      if (onError) onError(err);
     });
   };
 
@@ -439,6 +445,7 @@ function eventTimeLabel(date){
 function renderEventLog(events){
   eventList.innerHTML = "";
   eventLogEmpty.hidden = events.length > 0;
+  eventLogEmpty.textContent = "nenhum evento registrado ainda.";
   eventCount.textContent = `${events.length} evento${events.length === 1 ? "" : "s"}`;
 
   // mais recente primeiro
@@ -499,7 +506,14 @@ function openCampaign(campaign){
 
   const tryListenEvents = () => {
     if (!campaignsAPI.listenEvents) { setTimeout(tryListenEvents, 100); return; }
-    unsubscribeEvents = campaignsAPI.listenEvents(campaign.id, renderEventLog);
+    unsubscribeEvents = campaignsAPI.listenEvents(campaign.id, renderEventLog, (err) => {
+      eventList.innerHTML = "";
+      eventCount.textContent = "0 eventos";
+      eventLogEmpty.hidden = false;
+      eventLogEmpty.textContent = err && err.code === "permission-denied"
+        ? "acesso negado pelo Firestore ao ler o histórico — confira se a regra da coleção /events foi publicada (ver README)."
+        : "não foi possível carregar o histórico agora.";
+    });
   };
   tryListenEvents();
 }
