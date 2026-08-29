@@ -1428,6 +1428,182 @@ body{
 .terminal-body::-webkit-scrollbar-thumb{ background:var(--red-deep); }
 .terminal-body::-webkit-scrollbar-thumb:hover{ background:var(--red); }
 
+/* ============================================================
+   MOBILE — telas até 640px (celulares)
+   ============================================================ */
+@media (max-width: 640px){
+
+  .wrap{
+    padding:16px 14px 28px;
+  }
+
+  /* header */
+  .top{
+    flex-direction:column;
+    align-items:flex-start;
+    gap:12px;
+    padding-bottom:16px;
+    margin-bottom:20px;
+  }
+
+  .brand-glitch{ font-size:30px; }
+  .brand-sub{ font-size:10.5px; }
+
+  .status{
+    flex-wrap:wrap;
+    row-gap:6px;
+    font-size:11px;
+    width:100%;
+  }
+
+  /* abas Dados / Campanhas */
+  .tab-nav{
+    gap:0;
+    margin-bottom:18px;
+  }
+  .tab-btn{
+    flex:1;
+    text-align:center;
+    margin-right:0;
+    font-size:12px;
+    padding:10px 2px;
+  }
+
+  /* seletor de sistema de dado */
+  .mode-select{
+    flex-direction:column;
+  }
+  .mode-btn{
+    width:100%;
+    text-align:center;
+  }
+
+  /* dado */
+  .die-panel{ padding:20px 16px 22px; }
+  .die{ width:130px; height:130px; }
+  .die-glow{ width:150px; height:150px; }
+  .result-value{ font-size:28px; }
+
+  /* terminal */
+  .terminal{ min-height:320px; }
+  .terminal-body{ max-height:340px; font-size:12px; }
+  .terminal-title{ font-size:11px; }
+  .terminal-count{ font-size:10px; padding:2px 6px; }
+
+  /* botões principais */
+  .roll-btn{ font-size:13px; padding:14px 15px; }
+
+  /* abas de login/criar conta */
+  .modal-card{
+    max-width:100%;
+    max-height:92vh;
+  }
+  .modal-body{ padding:18px 16px 20px; }
+  .auth-tabs{ flex-wrap:wrap; }
+  .auth-tab{ font-size:12px; margin-right:14px; }
+
+  /* inputs — 16px evita zoom automático no iOS */
+  .modal-input,
+  .modal-textarea,
+  .damage-input,
+  .injuries-textarea{
+    font-size:16px;
+  }
+
+  /* campanhas: cabeçalho de seções */
+  .campaigns-head{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .campaigns-head h2{ margin-right:0; }
+  .roll-btn.small-btn{
+    width:100%;
+    justify-content:center;
+  }
+
+  /* grids de campanha e personagem — uma coluna */
+  .campaign-grid{
+    grid-template-columns:1fr;
+    gap:14px;
+  }
+  .character-grid{
+    grid-template-columns:1fr;
+    gap:16px;
+  }
+
+  .campaign-card-img{ height:150px; }
+
+  /* cabeçalho da campanha aberta */
+  .campaign-header{
+    flex-direction:column;
+    padding:14px;
+  }
+  .campaign-header-img{
+    width:100%;
+    height:160px;
+  }
+  .campaign-header-name{ font-size:20px; }
+
+  /* histórico de eventos */
+  .event-log-body{ max-height:180px; font-size:12px; }
+  .event-line{ flex-wrap:wrap; }
+  .event-time{ margin-left:0; }
+
+  /* ficha de personagem */
+  .character-photo{ height:200px; }
+  .character-identity{ flex-wrap:wrap; }
+  .character-traits{
+    grid-template-columns:1fr;
+  }
+
+  /* ferramenta de dano: 2 colunas em vez de 4 pra facilitar o toque */
+  .damage-quick{
+    grid-template-columns:repeat(2, 1fr);
+  }
+  .damage-quick .btn-mini{
+    padding:10px 4px;
+    font-size:12px;
+  }
+  .damage-exact{
+    flex-wrap:wrap;
+  }
+  .damage-exact-label{
+    width:100%;
+  }
+  .damage-input{
+    flex:1;
+    width:auto;
+  }
+  .damage-apply-btn{
+    flex:1;
+  }
+
+  /* kits médicos */
+  .medkit-row{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .medkit-actions{
+    justify-content:stretch;
+  }
+  .medkit-actions .btn-mini{
+    flex:1;
+    text-align:center;
+  }
+
+  /* botões pequenos em geral — alvo de toque mais confortável */
+  .btn-mini{
+    padding:8px 10px;
+    font-size:11.5px;
+  }
+
+  .footer, .foot{
+    flex-direction:column;
+    gap:4px;
+    text-align:center;
+  }
+}
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
 }
