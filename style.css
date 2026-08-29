@@ -667,6 +667,10 @@ body{
   padding-top:14px;
 }
 
+.character-card-details[hidden]{
+  display:none;
+}
+
 .character-traits{
   display:grid;
   grid-template-columns:1fr 1fr;
