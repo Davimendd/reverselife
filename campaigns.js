@@ -755,7 +755,7 @@ function renderCharacterCard(character){
   const isExpanded = expandedCharacterIds.has(character.id);
 
   const card = document.createElement("div");
-  card.className = "character-card";
+  card.className = "character-card" + (damage >= 100 ? " is-dead" : "");
 
   card.innerHTML = `
     <div class="character-card-head">

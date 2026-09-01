@@ -554,6 +554,54 @@ body{
   z-index:1;
 }
 
+/* ---------- estado de morte (dano em 100%) ---------- */
+
+.character-card.is-dead{
+  border-color:var(--red-deep);
+  animation:deadPulse 2.4s ease-in-out infinite;
+  overflow:hidden;
+}
+
+.character-card.is-dead::before{
+  background:linear-gradient(90deg, transparent, var(--red-bright), transparent);
+}
+
+.character-card.is-dead::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:2;
+  background:repeating-linear-gradient(
+    0deg,
+    rgba(255,255,255,0.05) 0px,
+    rgba(255,255,255,0.05) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode:overlay;
+  opacity:0.6;
+  animation:deadStatic 0.2s steps(2) infinite;
+}
+
+.character-card.is-dead .character-thumb{
+  filter:grayscale(1) contrast(1.1) brightness(0.8);
+}
+
+.character-card.is-dead .character-name{
+  color:var(--red-bright);
+}
+
+@keyframes deadPulse{
+  0%,100%{ box-shadow:0 0 0 rgba(216,30,30,0); border-color:var(--red-deep); }
+  50%{ box-shadow:0 0 20px 2px rgba(216,30,30,0.55); border-color:var(--red-bright); }
+}
+
+@keyframes deadStatic{
+  0%{ transform:translateY(0); }
+  100%{ transform:translateY(-2px); }
+}
+
 /* ---------- cabeçalho compacto (sempre visível) ---------- */
 
 .character-card-head{
