@@ -824,10 +824,21 @@ function renderCharacterCard(character){
           ${canUseMedkit ? `<button class="btn-mini" data-action="use-kit" ${(medkits > 0 && damage > 0) ? "" : "disabled"}>usar kit (-30%)</button>` : ""}
         </div>
       </div>
+
+      <p class="card-error" data-card-error hidden></p>
     </div>
   `;
 
   // ---- eventos ----
+  function showCardError(err, fallback){
+    const el = card.querySelector("[data-card-error]");
+    if (!el) return;
+    el.textContent = describeError(err, fallback);
+    el.hidden = false;
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => { el.hidden = true; }, 6000);
+  }
+
   const headEl = card.querySelector(".character-card-head");
   headEl.addEventListener("click", (ev) => {
     // o botão "✎ editar" também fica dentro do cabeçalho clicável — não deixa o clique nele expandir/recolher
@@ -855,7 +866,7 @@ function renderCharacterCard(character){
         const newDamage = clampDamage(damage + delta);
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: newDamage })
           .then(() => logDamageEvent(damage, newDamage, character.fullName))
-          .catch((err) => console.error("Falha ao atualizar dano:", err));
+          .catch((err) => { console.error("Falha ao atualizar dano:", err); showCardError(err, "erro ao atualizar dano."); });
       });
     });
     const applyBtn = card.querySelector('[data-action="dmg-apply"]');
@@ -866,7 +877,7 @@ function renderCharacterCard(character){
       const newDamage = clampDamage(val);
       campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: newDamage })
         .then(() => logDamageEvent(damage, newDamage, character.fullName))
-        .catch((err) => console.error("Falha ao atualizar dano:", err));
+        .catch((err) => { console.error("Falha ao atualizar dano:", err); showCardError(err, "erro ao atualizar dano."); });
       input.value = "";
     });
   }
@@ -877,7 +888,7 @@ function renderCharacterCard(character){
     saveBtn.addEventListener("click", () => {
       campaignsAPI.patchCharacter(currentCampaign.id, character.id, { injuries: textarea.value.trim() })
         .then(() => logEvent("📝", `<b>${escapeHtml(getCurrentHandle())}</b> atualizou os ferimentos/limitações de <b>${escapeHtml(character.fullName)}</b>.`))
-        .catch((err) => console.error("Falha ao salvar ferimentos:", err));
+        .catch((err) => { console.error("Falha ao salvar ferimentos:", err); showCardError(err, "erro ao salvar ferimentos."); });
     });
   }
 
@@ -887,7 +898,7 @@ function renderCharacterCard(character){
       addBtn.addEventListener("click", () => {
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { medkits: medkits + 1 })
           .then(() => logEvent("🩹", `<b>${escapeHtml(getCurrentHandle())}</b> adicionou um kit médico à ficha de <b>${escapeHtml(character.fullName)}</b> (agora com ${medkits + 1}).`))
-          .catch((err) => console.error("Falha ao adicionar kit médico:", err));
+          .catch((err) => { console.error("Falha ao adicionar kit médico:", err); showCardError(err, "erro ao adicionar kit médico."); });
       });
     }
     const removeBtn = card.querySelector('[data-action="remove-kit"]');
@@ -896,7 +907,7 @@ function renderCharacterCard(character){
         if (medkits <= 0) return;
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { medkits: medkits - 1 })
           .then(() => logEvent("🗑️", `<b>${escapeHtml(getCurrentHandle())}</b> removeu um kit médico da ficha de <b>${escapeHtml(character.fullName)}</b> (agora com ${medkits - 1}).`))
-          .catch((err) => console.error("Falha ao remover kit médico:", err));
+          .catch((err) => { console.error("Falha ao remover kit médico:", err); showCardError(err, "erro ao remover kit médico."); });
       });
     }
   }
@@ -909,7 +920,7 @@ function renderCharacterCard(character){
         const newDamage = clampDamage(damage - 30);
         campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: newDamage, medkits: medkits - 1 })
           .then(() => logEvent("💊", `<b>${escapeHtml(getCurrentHandle())}</b> usou um kit médico em <b>${escapeHtml(character.fullName)}</b>: dano de ${damage}% para ${newDamage}% (kits restantes: ${medkits - 1}).`))
-          .catch((err) => console.error("Falha ao usar kit médico:", err));
+          .catch((err) => { console.error("Falha ao usar kit médico:", err); showCardError(err, "erro ao usar kit médico."); });
       });
     }
   }
