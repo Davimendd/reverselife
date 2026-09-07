@@ -119,6 +119,7 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 - O narrador pode ajustar cada uma manualmente, ficha por ficha (+/-).
 - O narrador também tem dois botões de ação em massa que diminuem 1 de fome ou 1 de sede de **todas as fichas da campanha de uma vez** — útil pra marcar a passagem de um dia, por exemplo.
 - Itens de alimento e bebida no inventário ganham um botão **"consumir"** (disponível pro narrador ou pra quem criou a ficha): consumir um alimento dá +1 de fome, consumir uma bebida dá +1 de sede, e reduz a quantidade do item em 1 (removendo-o se chegar a zero).
+- **Penalidade por fome/sede zerada**: no mesmo painel, o narrador define uma porcentagem fixa (padrão 10%). Sempre que fome ou sede de uma ficha **já estiver em 0** e for reduzida de novo (manualmente ou pela ação em massa), em vez de tentar ir abaixo de zero, a ficha sofre esse tanto de dano — simulando o desgaste de continuar sem comer ou beber. Se esse dano levar a ficha a 100%, a morte é registrada normalmente.
 - Todas essas mudanças ficam registradas no histórico da campanha.
 
 **Histórico de eventos**: cada campanha tem um mini-log próprio, separado do terminal de dados, registrando o que acontece com as fichas ao longo do tempo — mudanças de dano (quem aplicou, quanto e o novo total), uso/adição/remoção de kits médicos, edições de ferimentos, criação e edição de fichas, e a morte de um personagem ao atingir 100% de dano. Fica visível para todos que entram na campanha, mais recente primeiro.

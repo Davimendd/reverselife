@@ -136,7 +136,7 @@ const campaignsAPI = {
   listenEvents: null,
   transferItem: null,
   patchCampaign: null,
-  bulkSetField: null
+  bulkPatchCharacters: null
 };
 
 // ------------------------------------------------------------
@@ -281,10 +281,10 @@ async function initFirebaseBackend(){
     await updateDoc(doc(db, "campaigns", campaignId), patch);
   };
 
-  campaignsAPI.bulkSetField = async (campaignId, statKey, updates) => {
+  campaignsAPI.bulkPatchCharacters = async (campaignId, updates) => {
     const batch = writeBatch(db);
-    updates.forEach(({ characterId, value }) => {
-      batch.update(doc(db, "campaigns", campaignId, "characters", characterId), { [statKey]: value });
+    updates.forEach(({ characterId, patch }) => {
+      batch.update(doc(db, "campaigns", campaignId, "characters", characterId), patch);
     });
     await batch.commit();
   };
@@ -455,11 +455,11 @@ function initLocalBackend(){
     if (channel) channel.postMessage({ type: "campaign" });
   };
 
-  campaignsAPI.bulkSetField = async (campaignId, statKey, updates) => {
+  campaignsAPI.bulkPatchCharacters = async (campaignId, updates) => {
     const list = readCharacters(campaignId);
-    updates.forEach(({ characterId, value }) => {
+    updates.forEach(({ characterId, patch }) => {
       const idx = list.findIndex((c) => c.id === characterId);
-      if (idx !== -1) list[idx] = { ...list[idx], [statKey]: value };
+      if (idx !== -1) list[idx] = { ...list[idx], ...patch };
     });
     writeCharacters(campaignId, list);
     notifyCharacters(campaignId);
@@ -618,6 +618,14 @@ function renderHungerThirstPanel(campaign){
           : `<span class="ht-status-badge ${enabled ? "on" : ""}">${enabled ? "ativo" : "inativo"}</span>`
         }
       </div>
+      ${isNarrator ? `
+        <div class="ht-penalty-row">
+          <span class="ht-penalty-label">dano ao perder fome/sede já zerada:</span>
+          <input type="number" id="htPenaltyInput" class="damage-input" min="0" max="100" value="${campaign.htDamagePenalty ?? 10}">
+          <span class="ht-penalty-suffix">%</span>
+          <button class="btn-mini" id="htPenaltySave">salvar</button>
+        </div>
+      ` : ""}
       ${enabled && isNarrator ? `
         <div class="ht-bulk-row">
           <span class="ht-bulk-label">ação em massa, todas as fichas:</span>
@@ -645,6 +653,28 @@ function renderHungerThirstPanel(campaign){
     });
   }
 
+  const penaltySaveBtn = document.getElementById("htPenaltySave");
+  if (penaltySaveBtn) {
+    penaltySaveBtn.addEventListener("click", async () => {
+      const input = document.getElementById("htPenaltyInput");
+      const errorEl = document.getElementById("htError");
+      const val = parseInt(input.value, 10);
+      if (!Number.isFinite(val) || val < 0 || val > 100) {
+        if (errorEl) errorEl.textContent = "informe uma porcentagem entre 0 e 100.";
+        return;
+      }
+      penaltySaveBtn.disabled = true;
+      try {
+        await campaignsAPI.patchCampaign(campaign.id, { htDamagePenalty: val });
+        logEvent("⚙️", `<b>${escapeHtml(getCurrentHandle())}</b> definiu a penalidade de dano por fome/sede zerada em ${val}%.`);
+      } catch (err) {
+        console.error("Falha ao salvar penalidade:", err);
+        if (errorEl) errorEl.textContent = describeError(err, "erro ao salvar penalidade.");
+      }
+      penaltySaveBtn.disabled = false;
+    });
+  }
+
   const bulkHungerBtn = document.getElementById("htBulkHungerMinus");
   if (bulkHungerBtn) bulkHungerBtn.addEventListener("click", () => bulkAdjustAll("hunger", -1, "fome", "🍗"));
 
@@ -653,24 +683,52 @@ function renderHungerThirstPanel(campaign){
 }
 
 async function bulkAdjustAll(statKey, delta, label, icon){
-  if (!currentCampaign || !campaignsAPI.bulkSetField) return;
+  if (!currentCampaign || !campaignsAPI.bulkPatchCharacters) return;
   const btnId = statKey === "hunger" ? "htBulkHungerMinus" : "htBulkThirstMinus";
   const btn = document.getElementById(btnId);
   const errorEl = document.getElementById("htError");
+  const penaltyPct = currentCampaign.htDamagePenalty ?? 10;
 
   const updates = [];
+  let penaltyCount = 0;
+  const deaths = [];
+
   lastCharacterList.forEach((c) => {
     const current = c[statKey] ?? 3;
     const newValue = Math.max(0, Math.min(3, current + delta));
-    if (newValue !== current) updates.push({ characterId: c.id, value: newValue });
+    const patch = {};
+    let changed = false;
+
+    if (newValue !== current) {
+      patch[statKey] = newValue;
+      changed = true;
+    }
+
+    // se já estava zerada e o narrador reduziu de novo, aplica a penalidade de dano
+    if (delta < 0 && current === 0) {
+      const oldDamage = clampDamage(c.damage || 0);
+      const newDamage = clampDamage(oldDamage + penaltyPct);
+      if (newDamage !== oldDamage) {
+        patch.damage = newDamage;
+        changed = true;
+        penaltyCount += 1;
+        if (newDamage >= 100 && oldDamage < 100) deaths.push(c.fullName);
+      }
+    }
+
+    if (changed) updates.push({ characterId: c.id, patch });
   });
 
   if (updates.length === 0) return;
 
   if (btn) btn.disabled = true;
   try {
-    await campaignsAPI.bulkSetField(currentCampaign.id, statKey, updates);
+    await campaignsAPI.bulkPatchCharacters(currentCampaign.id, updates);
     logEvent(icon, `<b>${escapeHtml(getCurrentHandle())}</b> diminuiu ${label} de todas as fichas em 1.`);
+    if (penaltyCount > 0) {
+      logEvent(icon, `${penaltyCount} ficha${penaltyCount === 1 ? "" : "s"} já com ${label} zerada sofreu${penaltyCount === 1 ? "" : "ram"} +${penaltyPct}% de dano.`);
+    }
+    deaths.forEach((name) => logEvent("☠️", `<b>${escapeHtml(name)}</b> morreu.`));
   } catch (err) {
     console.error(`Falha ao ajustar ${label} em massa:`, err);
     if (errorEl) errorEl.textContent = describeError(err, `erro ao ajustar ${label} em massa.`);
@@ -1468,11 +1526,37 @@ function renderCharacterCard(character){
         const stat = btn.dataset.stat; // "hunger" | "thirst"
         const delta = btn.dataset.action === "ht-inc" ? 1 : -1;
         const current = stat === "hunger" ? hunger : thirst;
-        const newValue = Math.max(0, Math.min(3, current + delta));
-        if (newValue === current) return;
         const label = stat === "hunger" ? "fome" : "sede";
-        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { [stat]: newValue })
-          .then(() => logEvent(stat === "hunger" ? "🍗" : "💧", `<b>${escapeHtml(getCurrentHandle())}</b> ${delta > 0 ? "aumentou" : "diminuiu"} ${label} de <b>${escapeHtml(character.fullName)}</b> para ${newValue}/3.`))
+
+        if (delta > 0 && current >= 3) return; // já no máximo, nada a fazer
+
+        const newValue = Math.max(0, Math.min(3, current + delta));
+        const alreadyZero = delta < 0 && current === 0;
+
+        const patch = {};
+        if (newValue !== current) patch[stat] = newValue;
+
+        let penaltyPct = 0;
+        let newDamage = damage;
+        if (alreadyZero) {
+          penaltyPct = currentCampaign.htDamagePenalty ?? 10;
+          newDamage = clampDamage(damage + penaltyPct);
+          if (newDamage !== damage) patch.damage = newDamage;
+        }
+
+        if (Object.keys(patch).length === 0) return;
+
+        campaignsAPI.patchCharacter(currentCampaign.id, character.id, patch)
+          .then(() => {
+            if (alreadyZero && patch.damage !== undefined) {
+              logEvent(stat === "hunger" ? "🍗" : "💧", `<b>${escapeHtml(character.fullName)}</b> já estava com ${label} zerada e sofreu +${penaltyPct}% de dano (aplicado por <b>${escapeHtml(getCurrentHandle())}</b>) — agora em ${newDamage}%.`);
+              if (newDamage >= 100 && damage < 100) {
+                logEvent("☠️", `<b>${escapeHtml(character.fullName)}</b> morreu.`);
+              }
+            } else {
+              logEvent(stat === "hunger" ? "🍗" : "💧", `<b>${escapeHtml(getCurrentHandle())}</b> ${delta > 0 ? "aumentou" : "diminuiu"} ${label} de <b>${escapeHtml(character.fullName)}</b> para ${newValue}/3.`);
+            }
+          })
           .catch((err) => { console.error("Falha ao atualizar fome/sede:", err); showCardError(err, "erro ao atualizar fome/sede."); });
       });
     });

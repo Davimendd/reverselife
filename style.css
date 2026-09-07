@@ -568,6 +568,31 @@ body{
   padding-top:12px;
 }
 
+.ht-penalty-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  border-top:1px dashed var(--line);
+  padding-top:12px;
+}
+
+.ht-penalty-label{
+  font-size:11px;
+  color:var(--mute);
+  letter-spacing:0.02em;
+}
+
+.ht-penalty-row .damage-input{
+  width:64px;
+}
+
+.ht-penalty-suffix{
+  font-size:11px;
+  color:var(--mute);
+  margin-left:-4px;
+}
+
 .ht-bulk-label{
   font-size:10.5px;
   color:var(--mute);
