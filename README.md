@@ -115,6 +115,12 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 
 **Inventário**: cada ficha tem uma lista de itens (nome, descrição, quantidade e categoria — 🍗 alimento, 🥤 bebida, 🗡️ arma ou 🎒 equipamento). Só o narrador pode adicionar itens, aumentar/diminuir a quantidade ou excluir um item. Tanto o narrador quanto quem criou a ficha podem **transferir** um item (ou parte da quantidade) para outra ficha da mesma campanha — como se um personagem entregasse o item a outro. Se a ficha de destino já tiver um item com o mesmo nome e categoria, as quantidades somam em vez de duplicar a entrada.
 
+**Sistema de fome e sede (opcional)**: um painel logo acima da lista de personagens permite ao narrador ligar ou desligar esse sistema pra campanha inteira. Quando ativo, cada ficha ganha duas barras de 3 unidades — 🍗 fome e 💧 sede:
+- O narrador pode ajustar cada uma manualmente, ficha por ficha (+/-).
+- O narrador também tem dois botões de ação em massa que diminuem 1 de fome ou 1 de sede de **todas as fichas da campanha de uma vez** — útil pra marcar a passagem de um dia, por exemplo.
+- Itens de alimento e bebida no inventário ganham um botão **"consumir"** (disponível pro narrador ou pra quem criou a ficha): consumir um alimento dá +1 de fome, consumir uma bebida dá +1 de sede, e reduz a quantidade do item em 1 (removendo-o se chegar a zero).
+- Todas essas mudanças ficam registradas no histórico da campanha.
+
 **Histórico de eventos**: cada campanha tem um mini-log próprio, separado do terminal de dados, registrando o que acontece com as fichas ao longo do tempo — mudanças de dano (quem aplicou, quanto e o novo total), uso/adição/remoção de kits médicos, edições de ferimentos, criação e edição de fichas, e a morte de um personagem ao atingir 100% de dano. Fica visível para todos que entram na campanha, mais recente primeiro.
 
 **Kit médico**: só o narrador (criador da campanha) pode adicionar ou remover kits médicos de uma ficha. Quem criou a ficha pode apenas usar/gastar os kits que ela já tiver. Usar um kit reduz o dano em 30 pontos percentuais e consome uma unidade — o campo de ferimentos continua livre para editar manualmente caso o kit também resolva alguma limitação registrada ali.

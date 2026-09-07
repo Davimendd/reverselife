@@ -25,6 +25,7 @@ const campaignEmpty = document.getElementById("campaignEmpty");
 const campaignsModeEl = document.getElementById("campaignsMode");
 const backToCampaignsBtn = document.getElementById("backToCampaigns");
 const campaignHeaderEl = document.getElementById("campaignHeader");
+const htPanel = document.getElementById("htPanel");
 const characterGrid = document.getElementById("characterGrid");
 const characterEmpty = document.getElementById("characterEmpty");
 const characterSearch = document.getElementById("characterSearch");
@@ -133,7 +134,9 @@ const campaignsAPI = {
   updateCharacterInfo: null,
   logEvent: null,
   listenEvents: null,
-  transferItem: null
+  transferItem: null,
+  patchCampaign: null,
+  bulkSetField: null
 };
 
 // ------------------------------------------------------------
@@ -173,7 +176,7 @@ function computeTransfer(fromItems, toItems, itemId, quantity){
 
 async function initFirebaseBackend(){
   const db = await getDb();
-  const { collection, addDoc, doc, updateDoc, runTransaction, query, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
+  const { collection, addDoc, doc, updateDoc, runTransaction, writeBatch, query, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
@@ -272,6 +275,18 @@ async function initFirebaseBackend(){
       tx.update(toRef, { items: result.toItems });
       return result.moved;
     });
+  };
+
+  campaignsAPI.patchCampaign = async (campaignId, patch) => {
+    await updateDoc(doc(db, "campaigns", campaignId), patch);
+  };
+
+  campaignsAPI.bulkSetField = async (campaignId, statKey, updates) => {
+    const batch = writeBatch(db);
+    updates.forEach(({ characterId, value }) => {
+      batch.update(doc(db, "campaigns", campaignId, "characters", characterId), { [statKey]: value });
+    });
+    await batch.commit();
   };
 
   campaignsModeEl.textContent = "modo: online (Firebase)";
@@ -430,6 +445,27 @@ function initLocalBackend(){
     return result.moved;
   };
 
+  campaignsAPI.patchCampaign = async (campaignId, patch) => {
+    const list = readCampaigns();
+    const idx = list.findIndex((c) => c.id === campaignId);
+    if (idx === -1) return;
+    list[idx] = { ...list[idx], ...patch };
+    writeCampaigns(list);
+    notifyCampaigns();
+    if (channel) channel.postMessage({ type: "campaign" });
+  };
+
+  campaignsAPI.bulkSetField = async (campaignId, statKey, updates) => {
+    const list = readCharacters(campaignId);
+    updates.forEach(({ characterId, value }) => {
+      const idx = list.findIndex((c) => c.id === characterId);
+      if (idx !== -1) list[idx] = { ...list[idx], [statKey]: value };
+    });
+    writeCharacters(campaignId, list);
+    notifyCharacters(campaignId);
+    if (channel) channel.postMessage({ type: "character", campaignId });
+  };
+
   campaignsModeEl.textContent = "modo: local (sem Firebase configurado — só entre abas deste navegador)";
 }
 
@@ -513,12 +549,15 @@ function renderCampaignCard(campaign){
       campaignEmpty.hidden = list.length > 0;
       list.forEach((campaign) => campaignGrid.appendChild(renderCampaignCard(campaign)));
 
-      // se a campanha aberta foi atualizada (ex: imagem terminou de subir), atualiza o cabeçalho
+      // se a campanha aberta foi atualizada (ex: imagem terminou de subir, ou
+      // o sistema de fome/sede foi ligado/desligado), atualiza cabeçalho e fichas
       if (currentCampaign) {
         const updated = list.find((c) => c.id === currentCampaign.id);
         if (updated) {
           currentCampaign = updated;
           renderCampaignHeader(updated);
+          renderHungerThirstPanel(updated);
+          applyCharacterFilter();
         }
       }
     });
@@ -538,6 +577,99 @@ function renderCampaignHeader(campaign){
       <span class="campaign-header-creator">narrador: ${escapeHtml(campaign.creator)}</span>
     </div>
   `;
+}
+
+// ------------------------------------------------------------
+// permissão compartilhada: "sou o narrador desta campanha?"
+// ------------------------------------------------------------
+function isCurrentUserCampaignCreator(campaign){
+  const uid = getCurrentUid();
+  const handle = getCurrentHandle();
+  return !!(
+    (uid && campaign.creatorUid && uid === campaign.creatorUid) ||
+    (!campaign.creatorUid && handle && campaign.creator && handle.toLowerCase() === campaign.creator.toLowerCase())
+  );
+}
+
+// ------------------------------------------------------------
+// painel de fome e sede (nível campanha) — liga/desliga e ações em massa
+// ------------------------------------------------------------
+function renderHungerThirstPanel(campaign){
+  const isNarrator = isCurrentUserCampaignCreator(campaign);
+  const enabled = !!campaign.hungerThirstEnabled;
+
+  if (!enabled && !isNarrator) {
+    htPanel.hidden = true;
+    htPanel.innerHTML = "";
+    return;
+  }
+
+  htPanel.hidden = false;
+  htPanel.innerHTML = `
+    <div class="ht-toggle-row">
+      <span class="ht-toggle-label">🍗💧 sistema de fome e sede</span>
+      ${isNarrator
+        ? `<button class="btn-mini ht-toggle-btn" id="htToggleBtn">${enabled ? "desativar" : "ativar"}</button>`
+        : `<span class="ht-status-badge">${enabled ? "ativo" : "inativo"}</span>`
+      }
+    </div>
+    ${enabled && isNarrator ? `
+      <div class="ht-bulk-row">
+        <span class="ht-bulk-label">ação em massa, todas as fichas:</span>
+        <button class="btn-mini" id="htBulkHungerMinus">🍗 -1 fome</button>
+        <button class="btn-mini" id="htBulkThirstMinus">💧 -1 sede</button>
+      </div>
+    ` : ""}
+    <p class="modal-error" id="htError"></p>
+  `;
+
+  const toggleBtn = document.getElementById("htToggleBtn");
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", async () => {
+      toggleBtn.disabled = true;
+      try {
+        await campaignsAPI.patchCampaign(campaign.id, { hungerThirstEnabled: !enabled });
+        logEvent("🍗💧", `<b>${escapeHtml(getCurrentHandle())}</b> ${!enabled ? "ativou" : "desativou"} o sistema de fome e sede nessa campanha.`);
+      } catch (err) {
+        console.error("Falha ao alternar sistema de fome/sede:", err);
+        const el = document.getElementById("htError");
+        if (el) el.textContent = describeError(err, "erro ao alternar o sistema.");
+        toggleBtn.disabled = false;
+      }
+    });
+  }
+
+  const bulkHungerBtn = document.getElementById("htBulkHungerMinus");
+  if (bulkHungerBtn) bulkHungerBtn.addEventListener("click", () => bulkAdjustAll("hunger", -1, "fome", "🍗"));
+
+  const bulkThirstBtn = document.getElementById("htBulkThirstMinus");
+  if (bulkThirstBtn) bulkThirstBtn.addEventListener("click", () => bulkAdjustAll("thirst", -1, "sede", "💧"));
+}
+
+async function bulkAdjustAll(statKey, delta, label, icon){
+  if (!currentCampaign || !campaignsAPI.bulkSetField) return;
+  const btnId = statKey === "hunger" ? "htBulkHungerMinus" : "htBulkThirstMinus";
+  const btn = document.getElementById(btnId);
+  const errorEl = document.getElementById("htError");
+
+  const updates = [];
+  lastCharacterList.forEach((c) => {
+    const current = c[statKey] ?? 3;
+    const newValue = Math.max(0, Math.min(3, current + delta));
+    if (newValue !== current) updates.push({ characterId: c.id, value: newValue });
+  });
+
+  if (updates.length === 0) return;
+
+  if (btn) btn.disabled = true;
+  try {
+    await campaignsAPI.bulkSetField(currentCampaign.id, statKey, updates);
+    logEvent(icon, `<b>${escapeHtml(getCurrentHandle())}</b> diminuiu ${label} de todas as fichas em 1.`);
+  } catch (err) {
+    console.error(`Falha ao ajustar ${label} em massa:`, err);
+    if (errorEl) errorEl.textContent = describeError(err, `erro ao ajustar ${label} em massa.`);
+  }
+  if (btn) btn.disabled = false;
 }
 
 // ------------------------------------------------------------
@@ -592,6 +724,7 @@ function logDamageEvent(oldDamage, newDamage, fullName){
 function openCampaign(campaign){
   currentCampaign = campaign;
   renderCampaignHeader(campaign);
+  renderHungerThirstPanel(campaign);
   campaignListView.hidden = true;
   campaignDetailView.hidden = false;
 
@@ -633,6 +766,8 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeCharacters) { unsubscribeCharacters(); unsubscribeCharacters = null; }
   if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
   currentCampaign = null;
+  htPanel.hidden = true;
+  htPanel.innerHTML = "";
   campaignDetailView.hidden = true;
   campaignListView.hidden = false;
 });
@@ -977,10 +1112,7 @@ function renderCharacterCard(character){
   const handle = getCurrentHandle();
   const uid = getCurrentUid();
 
-  const isCampaignCreator = !!(
-    (uid && currentCampaign && currentCampaign.creatorUid && uid === currentCampaign.creatorUid) ||
-    (!currentCampaign?.creatorUid && handle && currentCampaign && currentCampaign.creator && handle.toLowerCase() === currentCampaign.creator.toLowerCase())
-  );
+  const isCampaignCreator = currentCampaign ? isCurrentUserCampaignCreator(currentCampaign) : false;
   const isCharCreator = !!(
     (uid && character.creatorUid && uid === character.creatorUid) ||
     (!character.creatorUid && handle && character.creator && handle.toLowerCase() === character.creator.toLowerCase())
@@ -992,10 +1124,14 @@ function renderCharacterCard(character){
   const canUseMedkit = isCampaignCreator || isCharCreator; // quem criou a ficha pode gastar os kits que ela já tem
   const canManageItems = isCampaignCreator; // só o narrador adiciona/ajusta quantidade/exclui itens
   const canTransferItems = isCampaignCreator || isCharCreator; // narrador ou dono da ficha podem enviar itens pra outra ficha
+  const canEditHungerThirst = isCampaignCreator; // só o narrador ajusta fome/sede manualmente
+  const hungerThirstOn = !!(currentCampaign && currentCampaign.hungerThirstEnabled);
 
   const damage = clampDamage(character.damage || 0);
   const status = damageStatus(damage);
   const medkits = character.medkits || 0;
+  const hunger = character.hunger ?? 3;
+  const thirst = character.thirst ?? 3;
   const isExpanded = expandedCharacterIds.has(character.id);
 
   const card = document.createElement("div");
@@ -1034,6 +1170,35 @@ function renderCharacterCard(character){
           <span class="trait-chip-value">${escapeHtml(character.weakness || "—")}</span>
         </div>
       </div>
+
+      ${hungerThirstOn ? `
+        <div class="ht-block">
+          <div class="ht-stat-row">
+            <span class="ht-stat-label">🍗 fome</span>
+            <div class="ht-pips">
+              ${[1, 2, 3].map((n) => `<span class="ht-pip ${n <= hunger ? "filled" : ""}"></span>`).join("")}
+            </div>
+            ${canEditHungerThirst ? `
+              <div class="ht-stat-controls">
+                <button class="btn-mini" data-action="ht-dec" data-stat="hunger">-</button>
+                <button class="btn-mini" data-action="ht-inc" data-stat="hunger">+</button>
+              </div>
+            ` : ""}
+          </div>
+          <div class="ht-stat-row">
+            <span class="ht-stat-label">💧 sede</span>
+            <div class="ht-pips">
+              ${[1, 2, 3].map((n) => `<span class="ht-pip ${n <= thirst ? "filled" : ""}"></span>`).join("")}
+            </div>
+            ${canEditHungerThirst ? `
+              <div class="ht-stat-controls">
+                <button class="btn-mini" data-action="ht-dec" data-stat="thirst">-</button>
+                <button class="btn-mini" data-action="ht-inc" data-stat="thirst">+</button>
+              </div>
+            ` : ""}
+          </div>
+        </div>
+      ` : ""}
 
       ${canEditDamage ? `
         <div class="damage-section">
@@ -1086,6 +1251,9 @@ function renderCharacterCard(character){
                 ${item.description ? `<span class="item-desc">${escapeHtml(item.description)}</span>` : ""}
               </div>
               <div class="item-actions">
+                ${(hungerThirstOn && canTransferItems && (item.category === "alimento" || item.category === "bebida"))
+                  ? `<button class="btn-mini" data-action="item-consume" data-item-id="${item.id}">consumir</button>`
+                  : ""}
                 ${canManageItems ? `<button class="btn-mini" data-action="item-dec" data-item-id="${item.id}">-</button>` : ""}
                 ${canManageItems ? `<button class="btn-mini" data-action="item-inc" data-item-id="${item.id}">+</button>` : ""}
                 ${canTransferItems ? `<button class="btn-mini" data-action="item-transfer" data-item-id="${item.id}">↗</button>` : ""}
@@ -1252,6 +1420,54 @@ function renderCharacterCard(character){
         const item = (character.items || []).find((it) => it.id === itemId);
         if (!item) return;
         openTransferModal(character, item);
+      });
+    });
+
+    if (hungerThirstOn) {
+      card.querySelectorAll('[data-action="item-consume"]').forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const itemId = btn.dataset.itemId;
+          const items = character.items || [];
+          const item = items.find((it) => it.id === itemId);
+          if (!item || item.quantity <= 0) return;
+
+          const newQuantity = item.quantity - 1;
+          const newItems = newQuantity <= 0
+            ? items.filter((it) => it.id !== itemId)
+            : items.map((it) => it.id === itemId ? { ...it, quantity: newQuantity } : it);
+
+          const patch = { items: newItems };
+          let statText = "";
+          if (item.category === "alimento") {
+            const newHunger = Math.min(3, hunger + 1);
+            patch.hunger = newHunger;
+            statText = `fome: ${newHunger}/3`;
+          } else if (item.category === "bebida") {
+            const newThirst = Math.min(3, thirst + 1);
+            patch.thirst = newThirst;
+            statText = `sede: ${newThirst}/3`;
+          }
+
+          campaignsAPI.patchCharacter(currentCampaign.id, character.id, patch)
+            .then(() => logEvent("🍽️", `<b>${escapeHtml(getCurrentHandle())}</b> consumiu <b>${escapeHtml(item.name)}</b> em <b>${escapeHtml(character.fullName)}</b> (${statText}).`))
+            .catch((err) => { console.error("Falha ao consumir item:", err); showCardError(err, "erro ao consumir item."); });
+        });
+      });
+    }
+  }
+
+  if (canEditHungerThirst && hungerThirstOn) {
+    card.querySelectorAll('[data-action="ht-inc"], [data-action="ht-dec"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const stat = btn.dataset.stat; // "hunger" | "thirst"
+        const delta = btn.dataset.action === "ht-inc" ? 1 : -1;
+        const current = stat === "hunger" ? hunger : thirst;
+        const newValue = Math.max(0, Math.min(3, current + delta));
+        if (newValue === current) return;
+        const label = stat === "hunger" ? "fome" : "sede";
+        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { [stat]: newValue })
+          .then(() => logEvent(stat === "hunger" ? "🍗" : "💧", `<b>${escapeHtml(getCurrentHandle())}</b> ${delta > 0 ? "aumentou" : "diminuiu"} ${label} de <b>${escapeHtml(character.fullName)}</b> para ${newValue}/3.`))
+          .catch((err) => { console.error("Falha ao atualizar fome/sede:", err); showCardError(err, "erro ao atualizar fome/sede."); });
       });
     });
   }
