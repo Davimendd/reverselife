@@ -2,6 +2,20 @@ import { isConfigured, getDb, getFirestoreFns } from "./firebase-core.js";
 import { getCurrentHandle, getCurrentUid, ensureHandle } from "./identity.js";
 
 // ------------------------------------------------------------
+// categorias de item de inventário
+// ------------------------------------------------------------
+const ITEM_CATEGORIES = {
+  alimento: { label: "Alimento", icon: "🍗" },
+  bebida: { label: "Bebida", icon: "🥤" },
+  arma: { label: "Arma", icon: "🗡️" },
+  equipamento: { label: "Equipamento", icon: "🎒" }
+};
+
+function categoryIcon(category){
+  return (ITEM_CATEGORIES[category] && ITEM_CATEGORIES[category].icon) || "📦";
+}
+
+// ------------------------------------------------------------
 // elementos
 // ------------------------------------------------------------
 const campaignListView = document.getElementById("campaignListView");
@@ -42,6 +56,23 @@ const charPhotoPreview = document.getElementById("charPhotoPreview");
 const characterError = document.getElementById("characterError");
 const characterSubmit = document.getElementById("characterSubmit");
 const characterSubmitText = document.getElementById("characterSubmitText");
+
+const itemModal = document.getElementById("itemModal");
+const itemModalClose = document.getElementById("itemModalClose");
+const itemName = document.getElementById("itemName");
+const itemDescription = document.getElementById("itemDescription");
+const itemCategory = document.getElementById("itemCategory");
+const itemQuantity = document.getElementById("itemQuantity");
+const itemError = document.getElementById("itemError");
+const itemSubmit = document.getElementById("itemSubmit");
+
+const transferModal = document.getElementById("transferModal");
+const transferModalClose = document.getElementById("transferModalClose");
+const transferItemLabel = document.getElementById("transferItemLabel");
+const transferTarget = document.getElementById("transferTarget");
+const transferQuantity = document.getElementById("transferQuantity");
+const transferError = document.getElementById("transferError");
+const transferSubmit = document.getElementById("transferSubmit");
 
 // ------------------------------------------------------------
 // helpers de imagem: redimensiona no navegador e converte para
@@ -101,12 +132,48 @@ const campaignsAPI = {
   patchCharacter: null,
   updateCharacterInfo: null,
   logEvent: null,
-  listenEvents: null
+  listenEvents: null,
+  transferItem: null
 };
+
+// ------------------------------------------------------------
+// lógica pura de transferência de item — usada tanto pelo
+// backend Firebase (dentro de uma transação) quanto pelo local
+// ------------------------------------------------------------
+function computeTransfer(fromItems, toItems, itemId, quantity){
+  const fromList = [...fromItems];
+  const idx = fromList.findIndex((it) => it.id === itemId);
+  if (idx === -1) return null;
+
+  const item = fromList[idx];
+  const qty = Math.max(1, Math.min(quantity, item.quantity));
+
+  if (qty >= item.quantity) {
+    fromList.splice(idx, 1);
+  } else {
+    fromList[idx] = { ...item, quantity: item.quantity - qty };
+  }
+
+  const toList = [...toItems];
+  const matchIdx = toList.findIndex((it) => it.name === item.name && it.category === item.category);
+  if (matchIdx !== -1) {
+    toList[matchIdx] = { ...toList[matchIdx], quantity: toList[matchIdx].quantity + qty };
+  } else {
+    toList.push({
+      id: `i_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      name: item.name,
+      description: item.description,
+      category: item.category,
+      quantity: qty
+    });
+  }
+
+  return { fromItems: fromList, toItems: toList, moved: { name: item.name, quantity: qty } };
+}
 
 async function initFirebaseBackend(){
   const db = await getDb();
-  const { collection, addDoc, doc, updateDoc, query, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
+  const { collection, addDoc, doc, updateDoc, runTransaction, query, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
@@ -140,7 +207,7 @@ async function initFirebaseBackend(){
     const charsRef = collection(db, "campaigns", campaignId, "characters");
     const docRef = await addDoc(charsRef, {
       fullName, gender, strength, weakness, photoUrl,
-      creator, creatorUid, damage: 0, injuries: "", medkits: 0, createdAt: serverTimestamp()
+      creator, creatorUid, damage: 0, injuries: "", medkits: 0, items: [], createdAt: serverTimestamp()
     });
     return docRef.id;
   };
@@ -184,6 +251,26 @@ async function initFirebaseBackend(){
     }, (err) => {
       console.error("Falha ao ler histórico de eventos:", err);
       if (onError) onError(err);
+    });
+  };
+
+  campaignsAPI.transferItem = async (campaignId, fromCharacterId, toCharacterId, itemId, quantity) => {
+    const fromRef = doc(db, "campaigns", campaignId, "characters", fromCharacterId);
+    const toRef = doc(db, "campaigns", campaignId, "characters", toCharacterId);
+
+    return runTransaction(db, async (tx) => {
+      const fromSnap = await tx.get(fromRef);
+      const toSnap = await tx.get(toRef);
+      if (!fromSnap.exists() || !toSnap.exists()) throw new Error("CHARACTER_NOT_FOUND");
+
+      const fromData = fromSnap.data();
+      const toData = toSnap.data();
+      const result = computeTransfer(fromData.items || [], toData.items || [], itemId, quantity);
+      if (!result) throw new Error("ITEM_NOT_FOUND");
+
+      tx.update(fromRef, { items: result.fromItems });
+      tx.update(toRef, { items: result.toItems });
+      return result.moved;
     });
   };
 
@@ -270,7 +357,7 @@ function initLocalBackend(){
     }
     const id = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const list = readCharacters(campaignId);
-    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, creatorUid, damage: 0, injuries: "", medkits: 0, createdAt: Date.now() });
+    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, creatorUid, damage: 0, injuries: "", medkits: 0, items: [], createdAt: Date.now() });
     writeCharacters(campaignId, list);
     notifyCharacters(campaignId);
     if (channel) channel.postMessage({ type: "character", campaignId });
@@ -324,6 +411,23 @@ function initLocalBackend(){
     return () => {
       eventListeners[campaignId] = (eventListeners[campaignId] || []).filter((cb) => cb !== callback);
     };
+  };
+
+  campaignsAPI.transferItem = async (campaignId, fromCharacterId, toCharacterId, itemId, quantity) => {
+    const list = readCharacters(campaignId);
+    const fromIdx = list.findIndex((c) => c.id === fromCharacterId);
+    const toIdx = list.findIndex((c) => c.id === toCharacterId);
+    if (fromIdx === -1 || toIdx === -1) throw new Error("CHARACTER_NOT_FOUND");
+
+    const result = computeTransfer(list[fromIdx].items || [], list[toIdx].items || [], itemId, quantity);
+    if (!result) throw new Error("ITEM_NOT_FOUND");
+
+    list[fromIdx] = { ...list[fromIdx], items: result.fromItems };
+    list[toIdx] = { ...list[toIdx], items: result.toItems };
+    writeCharacters(campaignId, list);
+    notifyCharacters(campaignId);
+    if (channel) channel.postMessage({ type: "character", campaignId });
+    return result.moved;
   };
 
   campaignsModeEl.textContent = "modo: local (sem Firebase configurado — só entre abas deste navegador)";
@@ -678,6 +782,144 @@ characterSubmit.addEventListener("click", async () => {
 });
 
 // ------------------------------------------------------------
+// modal: adicionar item ao inventário
+// ------------------------------------------------------------
+let itemModalCharacter = null;
+
+function openItemModal(character){
+  itemModalCharacter = character;
+  itemName.value = "";
+  itemDescription.value = "";
+  itemCategory.value = "alimento";
+  itemQuantity.value = "1";
+  itemError.textContent = "";
+  itemModal.classList.remove("hidden");
+  setTimeout(() => itemName.focus(), 50);
+}
+function closeItemModal(){
+  itemModal.classList.add("hidden");
+  itemModalCharacter = null;
+}
+itemModalClose.addEventListener("click", closeItemModal);
+
+itemSubmit.addEventListener("click", async () => {
+  if (!currentCampaign || !itemModalCharacter) return;
+
+  const name = itemName.value.trim();
+  const description = itemDescription.value.trim();
+  const category = itemCategory.value;
+  const quantity = parseInt(itemQuantity.value, 10);
+
+  if (name.length < 1) {
+    itemError.textContent = "informe o nome do item.";
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity < 1) {
+    itemError.textContent = "quantidade precisa ser um número maior que zero.";
+    return;
+  }
+  if (!campaignsAPI.patchCharacter) {
+    itemError.textContent = "backend ainda não carregou, tente novamente em instantes.";
+    return;
+  }
+
+  const newItem = {
+    id: `i_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name, description, category, quantity
+  };
+  const newItems = [...(itemModalCharacter.items || []), newItem];
+
+  itemSubmit.disabled = true;
+  itemError.textContent = "adicionando item...";
+
+  try {
+    await campaignsAPI.patchCharacter(currentCampaign.id, itemModalCharacter.id, { items: newItems });
+    logEvent("📦", `<b>${escapeHtml(getCurrentHandle())}</b> adicionou <b>${escapeHtml(name)}</b> (x${quantity}) à ficha de <b>${escapeHtml(itemModalCharacter.fullName)}</b>.`);
+    itemSubmit.disabled = false;
+    closeItemModal();
+  } catch (err) {
+    console.error("Falha ao adicionar item:", err);
+    itemSubmit.disabled = false;
+    itemError.textContent = describeError(err, "erro ao adicionar item.");
+  }
+});
+
+// ------------------------------------------------------------
+// modal: transferir item para outra ficha
+// ------------------------------------------------------------
+let transferSource = null; // { character, item }
+
+function openTransferModal(character, item){
+  transferSource = { character, item };
+  transferItemLabel.textContent = `${categoryIcon(item.category)} ${item.name} — você tem ${item.quantity}`;
+
+  transferTarget.innerHTML = "";
+  lastCharacterList
+    .filter((c) => c.id !== character.id)
+    .forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.fullName;
+      transferTarget.appendChild(opt);
+    });
+
+  if (transferTarget.options.length === 0) {
+    transferError.textContent = "não há outra ficha nessa campanha para receber o item.";
+    transferSubmit.disabled = true;
+  } else {
+    transferError.textContent = "";
+    transferSubmit.disabled = false;
+  }
+
+  transferQuantity.max = String(item.quantity);
+  transferQuantity.value = String(item.quantity);
+
+  transferModal.classList.remove("hidden");
+}
+function closeTransferModal(){
+  transferModal.classList.add("hidden");
+  transferSource = null;
+}
+transferModalClose.addEventListener("click", closeTransferModal);
+
+transferSubmit.addEventListener("click", async () => {
+  if (!currentCampaign || !transferSource) return;
+  const { character, item } = transferSource;
+
+  const targetId = transferTarget.value;
+  const quantity = parseInt(transferQuantity.value, 10);
+
+  if (!targetId) {
+    transferError.textContent = "escolha uma ficha de destino.";
+    return;
+  }
+  if (!Number.isFinite(quantity) || quantity < 1 || quantity > item.quantity) {
+    transferError.textContent = `informe uma quantidade entre 1 e ${item.quantity}.`;
+    return;
+  }
+  if (!campaignsAPI.transferItem) {
+    transferError.textContent = "backend ainda não carregou, tente novamente em instantes.";
+    return;
+  }
+
+  const targetCharacter = lastCharacterList.find((c) => c.id === targetId);
+
+  transferSubmit.disabled = true;
+  transferError.textContent = "enviando item...";
+
+  try {
+    await campaignsAPI.transferItem(currentCampaign.id, character.id, targetId, item.id, quantity);
+    logEvent("🔁", `<b>${escapeHtml(getCurrentHandle())}</b> enviou <b>${escapeHtml(item.name)}</b> (x${quantity}) de <b>${escapeHtml(character.fullName)}</b> para <b>${escapeHtml(targetCharacter ? targetCharacter.fullName : "?")}</b>.`);
+    transferSubmit.disabled = false;
+    closeTransferModal();
+  } catch (err) {
+    console.error("Falha ao transferir item:", err);
+    transferSubmit.disabled = false;
+    transferError.textContent = describeError(err, "erro ao transferir item.");
+  }
+});
+
+// ------------------------------------------------------------
 // grid de personagens
 // ------------------------------------------------------------
 let lastCharacterList = [];
@@ -748,6 +990,8 @@ function renderCharacterCard(character){
   const canEditInjuries = isCampaignCreator || isCharCreator;
   const canManageMedkit = isCampaignCreator; // só o narrador adiciona/remove kits
   const canUseMedkit = isCampaignCreator || isCharCreator; // quem criou a ficha pode gastar os kits que ela já tem
+  const canManageItems = isCampaignCreator; // só o narrador adiciona/ajusta quantidade/exclui itens
+  const canTransferItems = isCampaignCreator || isCharCreator; // narrador ou dono da ficha podem enviar itens pra outra ficha
 
   const damage = clampDamage(character.damage || 0);
   const status = damageStatus(damage);
@@ -823,6 +1067,34 @@ function renderCharacterCard(character){
           ${canManageMedkit ? `<button class="btn-mini" data-action="add-kit">+ kit</button>` : ""}
           ${canUseMedkit ? `<button class="btn-mini" data-action="use-kit" ${(medkits > 0 && damage > 0) ? "" : "disabled"}>usar kit (-30%)</button>` : ""}
         </div>
+      </div>
+
+      <div class="inventory-box">
+        <div class="inventory-head">
+          <span class="injuries-label">inventário</span>
+          ${canManageItems ? `<button class="btn-mini" data-action="add-item">+ item</button>` : ""}
+        </div>
+        <div class="inventory-list">
+          ${(character.items || []).map((item) => `
+            <div class="item-row" data-item-id="${item.id}">
+              <span class="item-icon">${categoryIcon(item.category)}</span>
+              <div class="item-info">
+                <div class="item-name-row">
+                  <span class="item-name">${escapeHtml(item.name)}</span>
+                  <span class="item-qty">x${item.quantity}</span>
+                </div>
+                ${item.description ? `<span class="item-desc">${escapeHtml(item.description)}</span>` : ""}
+              </div>
+              <div class="item-actions">
+                ${canManageItems ? `<button class="btn-mini" data-action="item-dec" data-item-id="${item.id}">-</button>` : ""}
+                ${canManageItems ? `<button class="btn-mini" data-action="item-inc" data-item-id="${item.id}">+</button>` : ""}
+                ${canTransferItems ? `<button class="btn-mini" data-action="item-transfer" data-item-id="${item.id}">↗</button>` : ""}
+                ${canManageItems ? `<button class="btn-mini" data-action="item-delete" data-item-id="${item.id}">🗑️</button>` : ""}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        ${(character.items || []).length === 0 ? `<p class="inventory-empty">nenhum item.</p>` : ""}
       </div>
 
       <p class="card-error" data-card-error hidden></p>
@@ -923,6 +1195,65 @@ function renderCharacterCard(character){
           .catch((err) => { console.error("Falha ao usar kit médico:", err); showCardError(err, "erro ao usar kit médico."); });
       });
     }
+  }
+
+  if (canManageItems) {
+    const addItemBtn = card.querySelector('[data-action="add-item"]');
+    if (addItemBtn) {
+      addItemBtn.addEventListener("click", () => openItemModal(character));
+    }
+
+    card.querySelectorAll('[data-action="item-inc"], [data-action="item-dec"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const itemId = btn.dataset.itemId;
+        const items = character.items || [];
+        const idx = items.findIndex((it) => it.id === itemId);
+        if (idx === -1) return;
+        const delta = btn.dataset.action === "item-inc" ? 1 : -1;
+        const item = items[idx];
+        const newQty = item.quantity + delta;
+
+        let newItems;
+        if (newQty <= 0) {
+          newItems = items.filter((it) => it.id !== itemId);
+        } else {
+          newItems = items.map((it) => it.id === itemId ? { ...it, quantity: newQty } : it);
+        }
+
+        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { items: newItems })
+          .then(() => logEvent(
+            newQty <= 0 ? "🗑️" : (delta > 0 ? "📦" : "📦"),
+            newQty <= 0
+              ? `<b>${escapeHtml(getCurrentHandle())}</b> removeu <b>${escapeHtml(item.name)}</b> da ficha de <b>${escapeHtml(character.fullName)}</b> (quantidade zerada).`
+              : `<b>${escapeHtml(getCurrentHandle())}</b> ${delta > 0 ? "aumentou" : "diminuiu"} <b>${escapeHtml(item.name)}</b> na ficha de <b>${escapeHtml(character.fullName)}</b> (agora x${newQty}).`
+          ))
+          .catch((err) => { console.error("Falha ao atualizar item:", err); showCardError(err, "erro ao atualizar item."); });
+      });
+    });
+
+    card.querySelectorAll('[data-action="item-delete"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const itemId = btn.dataset.itemId;
+        const items = character.items || [];
+        const item = items.find((it) => it.id === itemId);
+        if (!item) return;
+        const newItems = items.filter((it) => it.id !== itemId);
+        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { items: newItems })
+          .then(() => logEvent("🗑️", `<b>${escapeHtml(getCurrentHandle())}</b> excluiu o item <b>${escapeHtml(item.name)}</b> da ficha de <b>${escapeHtml(character.fullName)}</b>.`))
+          .catch((err) => { console.error("Falha ao excluir item:", err); showCardError(err, "erro ao excluir item."); });
+      });
+    });
+  }
+
+  if (canTransferItems) {
+    card.querySelectorAll('[data-action="item-transfer"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const itemId = btn.dataset.itemId;
+        const item = (character.items || []).find((it) => it.id === itemId);
+        if (!item) return;
+        openTransferModal(character, item);
+      });
+    });
   }
 
   return card;

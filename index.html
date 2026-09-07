@@ -159,6 +159,76 @@
   </div>
 </div>
 
+<!-- ===================== modal: adicionar item ===================== -->
+<div class="modal-overlay hidden" id="itemModal">
+  <div class="modal-card">
+    <div class="terminal-bar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">/bin/novo_item</span>
+      <button class="modal-close" id="itemModalClose" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label" for="itemName">nome do item</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="text" id="itemName" class="modal-input" maxlength="60" autocomplete="off" placeholder="ex: kit de primeiros socorros">
+      </div>
+
+      <label class="modal-label" for="itemDescription">descrição</label>
+      <textarea id="itemDescription" class="modal-textarea" maxlength="300" placeholder="detalhes sobre o item..."></textarea>
+
+      <label class="modal-label" for="itemCategory">categoria</label>
+      <select id="itemCategory" class="modal-select">
+        <option value="alimento">🍗 Alimento</option>
+        <option value="bebida">🥤 Bebida</option>
+        <option value="arma">🗡️ Arma</option>
+        <option value="equipamento">🎒 Equipamento</option>
+      </select>
+
+      <label class="modal-label" for="itemQuantity">quantidade</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="number" id="itemQuantity" class="modal-input" min="1" value="1">
+      </div>
+
+      <p class="modal-error" id="itemError"></p>
+
+      <button class="roll-btn" id="itemSubmit">
+        <span class="roll-btn-text">ADICIONAR ITEM</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== modal: transferir item ===================== -->
+<div class="modal-overlay hidden" id="transferModal">
+  <div class="modal-card">
+    <div class="terminal-bar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">/bin/transferir_item</span>
+      <button class="modal-close" id="transferModalClose" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-line" id="transferItemLabel">item</p>
+
+      <label class="modal-label" for="transferTarget">enviar para</label>
+      <select id="transferTarget" class="modal-select"></select>
+
+      <label class="modal-label" for="transferQuantity">quantidade</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="number" id="transferQuantity" class="modal-input" min="1" value="1">
+      </div>
+
+      <p class="modal-error" id="transferError"></p>
+
+      <button class="roll-btn" id="transferSubmit">
+        <span class="roll-btn-text">ENVIAR ITEM</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
 
   <header class="top">
