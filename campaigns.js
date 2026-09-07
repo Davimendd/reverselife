@@ -606,21 +606,27 @@ function renderHungerThirstPanel(campaign){
 
   htPanel.hidden = false;
   htPanel.innerHTML = `
-    <div class="ht-toggle-row">
-      <span class="ht-toggle-label">🍗💧 sistema de fome e sede</span>
-      ${isNarrator
-        ? `<button class="btn-mini ht-toggle-btn" id="htToggleBtn">${enabled ? "desativar" : "ativar"}</button>`
-        : `<span class="ht-status-badge">${enabled ? "ativo" : "inativo"}</span>`
-      }
+    <div class="ht-panel-bar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="ht-panel-title">/etc/sobrevivencia.cfg</span>
     </div>
-    ${enabled && isNarrator ? `
-      <div class="ht-bulk-row">
-        <span class="ht-bulk-label">ação em massa, todas as fichas:</span>
-        <button class="btn-mini" id="htBulkHungerMinus">🍗 -1 fome</button>
-        <button class="btn-mini" id="htBulkThirstMinus">💧 -1 sede</button>
+    <div class="ht-panel-body">
+      <div class="ht-toggle-row">
+        <span class="ht-toggle-label">🍗 fome &amp; 💧 sede</span>
+        ${isNarrator
+          ? `<button class="ht-switch ${enabled ? "on" : ""}" id="htToggleBtn" aria-pressed="${enabled}"><span class="ht-switch-knob"></span></button>`
+          : `<span class="ht-status-badge ${enabled ? "on" : ""}">${enabled ? "ativo" : "inativo"}</span>`
+        }
       </div>
-    ` : ""}
-    <p class="modal-error" id="htError"></p>
+      ${enabled && isNarrator ? `
+        <div class="ht-bulk-row">
+          <span class="ht-bulk-label">ação em massa, todas as fichas:</span>
+          <button class="btn-mini" id="htBulkHungerMinus">🍗 -1 fome</button>
+          <button class="btn-mini" id="htBulkThirstMinus">💧 -1 sede</button>
+        </div>
+      ` : ""}
+      <p class="modal-error" id="htError"></p>
+    </div>
   `;
 
   const toggleBtn = document.getElementById("htToggleBtn");
@@ -1173,10 +1179,10 @@ function renderCharacterCard(character){
 
       ${hungerThirstOn ? `
         <div class="ht-block">
-          <div class="ht-stat-row">
+          <div class="ht-stat-row ${hunger === 0 ? "critical" : ""}">
             <span class="ht-stat-label">🍗 fome</span>
             <div class="ht-pips">
-              ${[1, 2, 3].map((n) => `<span class="ht-pip ${n <= hunger ? "filled" : ""}"></span>`).join("")}
+              ${[1, 2, 3].map((n) => `<span class="ht-pip hunger ${n <= hunger ? "filled" : ""}"></span>`).join("")}
             </div>
             ${canEditHungerThirst ? `
               <div class="ht-stat-controls">
@@ -1185,10 +1191,10 @@ function renderCharacterCard(character){
               </div>
             ` : ""}
           </div>
-          <div class="ht-stat-row">
+          <div class="ht-stat-row ${thirst === 0 ? "critical" : ""}">
             <span class="ht-stat-label">💧 sede</span>
             <div class="ht-pips">
-              ${[1, 2, 3].map((n) => `<span class="ht-pip ${n <= thirst ? "filled" : ""}"></span>`).join("")}
+              ${[1, 2, 3].map((n) => `<span class="ht-pip thirst ${n <= thirst ? "filled" : ""}"></span>`).join("")}
             </div>
             ${canEditHungerThirst ? `
               <div class="ht-stat-controls">
