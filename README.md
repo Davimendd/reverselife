@@ -11,7 +11,27 @@ Site com um dado de 6 lados e um terminal onde toda rolagem feita por qualquer p
 - `identity.js` — login, criar conta e sessão (Firebase Authentication)
 - `sound.js` — efeitos sonoros sintetizados (sem arquivos de áudio)
 - `app.js` — lógica do dado, animação e feed em tempo real
-- `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos e kits médicos
+- `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos, kits médicos, inventário e fome/sede
+- `manifest.json` — metadados do app instalável (PWA): nome, cores, ícones
+- `sw.js` — service worker: cacheia os arquivos do site pra abrir mais rápido e funcionar offline
+- `pwa.js` — registra o service worker
+- `icons/` — ícones do app em vários tamanhos (gerados no mesmo estilo visual do dado do site)
+
+## Instalar como app (PWA)
+
+O site pode ser adicionado à tela inicial do celular (ou instalado no computador) e abrir como se fosse um app nativo, sem barra de endereço do navegador.
+
+**Requisito importante:** PWAs só funcionam servidos via **HTTPS** (ou `localhost` durante testes) — não funciona pelo `file://` nem por HTTP puro. Qualquer hospedagem HTTPS normal (Firebase Hosting, Vercel, Netlify, GitHub Pages) já atende isso.
+
+**Android (Chrome):** ao visitar o site, aparece um banner ou o menu (⋮) mostra a opção **"Instalar app"** / **"Adicionar à tela inicial"**.
+
+**iPhone/iPad (Safari):** toque no ícone de compartilhar (□ com uma seta) → **"Adicionar à Tela de Início"**. O Safari não mostra instalação automática como o Chrome — esse é o único caminho no iOS.
+
+**Computador (Chrome/Edge):** um ícone de instalação aparece na barra de endereço, à direita.
+
+Depois de instalado, o site abre em janela própria, com o ícone do dado vermelho na tela inicial/menu de apps, sem mostrar a interface do navegador.
+
+**Atualizando o site depois de instalado:** o service worker guarda uma cópia dos arquivos (HTML/CSS/JS) para abrir mais rápido e funcionar minimamente offline. Sempre que você publicar uma alteração no código, abra `sw.js` e aumente o número em `CACHE_NAME` (ex: de `"reverse-life-v1"` para `"reverse-life-v2"`) — isso força quem já instalou o app a baixar a versão nova, em vez de continuar vendo a versão antiga guardada em cache. Sem esse passo, atualizações podem demorar a aparecer para quem já tem o app instalado.
 
 ## Como rodar
 
