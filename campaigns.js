@@ -32,6 +32,7 @@ const characterSearch = document.getElementById("characterSearch");
 const eventList = document.getElementById("eventList");
 const eventLogEmpty = document.getElementById("eventLogEmpty");
 const eventCount = document.getElementById("eventCount");
+const notifyBtn = document.getElementById("notifyBtn");
 
 const createCampaignBtn = document.getElementById("createCampaignBtn");
 const campaignModal = document.getElementById("campaignModal");
@@ -517,6 +518,155 @@ function describeError(err, fallback){
 }
 
 // ------------------------------------------------------------
+// notificações (Web Notifications API)
+//
+// Como o site não usa um plano pago do Firebase, não há um
+// servidor de push — então essas notificações só disparam
+// enquanto o site estiver aberto em alguma aba (mesmo que em
+// segundo plano), com a campanha em questão aberta nela. Não
+// funcionam com o navegador/app totalmente fechado.
+// ------------------------------------------------------------
+const NOTIFY_MUTE_KEY = "rl_notifications_muted";
+
+function isNotifyMuted(){
+  return localStorage.getItem(NOTIFY_MUTE_KEY) === "1";
+}
+function setNotifyMuted(value){
+  localStorage.setItem(NOTIFY_MUTE_KEY, value ? "1" : "0");
+}
+
+function canNotify(){
+  return ("Notification" in window) && Notification.permission === "granted" && !isNotifyMuted();
+}
+
+function refreshNotifyUI(){
+  if (!notifyBtn) return;
+  if (!("Notification" in window)) {
+    notifyBtn.hidden = true;
+    return;
+  }
+  const active = Notification.permission === "granted" && !isNotifyMuted();
+  notifyBtn.textContent = active ? "🔔" : "🔕";
+  notifyBtn.classList.toggle("is-active", active);
+  notifyBtn.title = Notification.permission === "denied"
+    ? "notificações bloqueadas — libere manualmente nas configurações do site no navegador"
+    : (active ? "notificações ativadas — clique para silenciar" : "ativar notificações");
+}
+
+if (notifyBtn) {
+  refreshNotifyUI();
+  notifyBtn.addEventListener("click", async () => {
+    if (!("Notification" in window)) return;
+
+    if (Notification.permission === "denied") {
+      alert("As notificações foram bloqueadas para este site. Para reativar, libere manualmente nas configurações de notificação do seu navegador.");
+      return;
+    }
+
+    if (Notification.permission === "default") {
+      const result = await Notification.requestPermission();
+      if (result === "granted") {
+        setNotifyMuted(false);
+        new Notification("🔔 Reverse Life", {
+          body: "Notificações ativadas — você será avisado sobre mudanças na sua ficha mesmo com a aba em segundo plano.",
+          icon: "icons/icon-192.png"
+        });
+      }
+      refreshNotifyUI();
+      return;
+    }
+
+    // permissão do navegador já concedida — alterna o "mudo" interno do site
+    setNotifyMuted(!isNotifyMuted());
+    refreshNotifyUI();
+  });
+}
+
+function sendNotification(title, body){
+  if (!canNotify()) return;
+  if (!document.hidden) return; // a interface já mostra a mudança ao vivo; só notifica em segundo plano
+  try {
+    const notif = new Notification(title, {
+      body,
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      tag: `rl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    });
+    notif.onclick = () => { window.focus(); notif.close(); };
+  } catch (err) {
+    console.error("Falha ao mostrar notificação:", err);
+  }
+}
+
+// snapshot leve de cada personagem, usado só para comparar com a
+// próxima atualização e detectar o que mudou
+let previousCharacterStates = new Map();
+
+function snapshotCharacterForNotify(c){
+  return {
+    damage: clampDamage(c.damage || 0),
+    hunger: c.hunger ?? 3,
+    thirst: c.thirst ?? 3,
+    itemIds: (c.items || []).map((it) => it.id)
+  };
+}
+
+function isMineForNotify(character){
+  const uid = getCurrentUid();
+  const handle = getCurrentHandle();
+  return !!(
+    (uid && character.creatorUid && uid === character.creatorUid) ||
+    (!character.creatorUid && handle && character.creator && handle.toLowerCase() === character.creator.toLowerCase())
+  );
+}
+
+function checkForNotifications(newList){
+  newList.forEach((character) => {
+    const prev = previousCharacterStates.get(character.id);
+    const curr = snapshotCharacterForNotify(character);
+
+    if (prev) {
+      const mine = isMineForNotify(character);
+
+      // morte — vale pra qualquer um que tenha a campanha aberta, não só o dono
+      if (prev.damage < 100 && curr.damage >= 100) {
+        sendNotification(`☠️ ${character.fullName} morreu`, "O personagem chegou a 100% de dano.");
+      } else if (mine && curr.damage !== prev.damage) {
+        if (curr.damage > prev.damage) {
+          sendNotification(`🩸 ${character.fullName} sofreu dano`, `Dano subiu de ${prev.damage}% para ${curr.damage}%.`);
+        } else {
+          sendNotification(`💚 ${character.fullName} se recuperou`, `Dano caiu de ${prev.damage}% para ${curr.damage}%.`);
+        }
+      }
+
+      if (mine) {
+        if (curr.hunger < prev.hunger) {
+          sendNotification(
+            curr.hunger === 0 ? `🍗 ${character.fullName} está com fome zerada!` : `🍗 fome de ${character.fullName} diminuiu`,
+            `Agora em ${curr.hunger}/3.`
+          );
+        }
+        if (curr.thirst < prev.thirst) {
+          sendNotification(
+            curr.thirst === 0 ? `💧 ${character.fullName} está com sede zerada!` : `💧 sede de ${character.fullName} diminuiu`,
+            `Agora em ${curr.thirst}/3.`
+          );
+        }
+
+        const newItemIds = curr.itemIds.filter((id) => !prev.itemIds.includes(id));
+        if (newItemIds.length > 0) {
+          const newItems = (character.items || []).filter((it) => newItemIds.includes(it.id));
+          const names = newItems.map((it) => `${categoryIcon(it.category)} ${it.name}`).join(", ");
+          sendNotification(`📦 novo item em ${character.fullName}`, names);
+        }
+      }
+    }
+
+    previousCharacterStates.set(character.id, curr);
+  });
+}
+
+// ------------------------------------------------------------
 // lista de campanhas
 // ------------------------------------------------------------
 let currentCampaign = null;
@@ -797,6 +947,7 @@ function openCampaign(campaign){
   characterSearch.value = "";
   lastCharacterList = [];
   expandedCharacterIds.clear();
+  previousCharacterStates = new Map();
 
   if (unsubscribeEvents) unsubscribeEvents();
   eventList.innerHTML = "";
@@ -806,6 +957,7 @@ function openCampaign(campaign){
   const tryListen = () => {
     if (!campaignsAPI.listenCharacters) { setTimeout(tryListen, 100); return; }
     unsubscribeCharacters = campaignsAPI.listenCharacters(campaign.id, (list) => {
+      checkForNotifications(list);
       lastCharacterList = list;
       applyCharacterFilter();
     });
@@ -830,6 +982,7 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeCharacters) { unsubscribeCharacters(); unsubscribeCharacters = null; }
   if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
   currentCampaign = null;
+  previousCharacterStates = new Map();
   htPanel.hidden = true;
   htPanel.innerHTML = "";
   campaignDetailView.hidden = true;

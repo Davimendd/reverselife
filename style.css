@@ -1456,6 +1456,7 @@ body{
 
 .mute-btn:hover{ color:var(--red); }
 .mute-btn.is-muted{ opacity:0.5; }
+.mute-btn.is-active{ color:var(--red-bright); }
 
 /* ---------- layout ---------- */
 

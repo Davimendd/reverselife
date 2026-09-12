@@ -17,6 +17,19 @@ Site com um dado de 6 lados e um terminal onde toda rolagem feita por qualquer p
 - `pwa.js` — registra o service worker
 - `icons/` — ícones do app em vários tamanhos (gerados no mesmo estilo visual do dado do site)
 
+## Notificações
+
+Um ícone de sino (🔔/🔕) no topo da página liga ou desliga notificações do navegador para quem estiver com uma campanha aberta. Quando ativadas, a pessoa é avisada automaticamente quando:
+
+- o **dano** de uma ficha que ela criou muda (subiu ou desceu);
+- a **fome** ou a **sede** de uma ficha que ela criou diminui — com um aviso especial quando chega a zero;
+- um **item novo** aparece no inventário de uma ficha que ela criou;
+- **qualquer personagem da campanha morre** (chega a 100% de dano) — essa notificação vale pra todo mundo com a campanha aberta, não só pra quem criou a ficha.
+
+**Como ativar:** clique no sino no topo da página; o navegador vai pedir permissão de notificação. Depois de concedida, clicar de novo no sino liga/desliga o aviso sem precisar mexer nas configurações do navegador.
+
+**⚠️ Limitação importante:** como o site não usa nenhum serviço pago de push (Firebase Cloud Messaging exigiria o plano Blaze), essas notificações só funcionam **enquanto o site estiver aberto em alguma aba do navegador** — mesmo que essa aba esteja em segundo plano (minimizada, em outra aba, com a tela do celular bloqueada em alguns casos) — e com a campanha em questão aberta nela. Elas **não** funcionam com o navegador/app totalmente fechado. Para notificações de verdade com o app fechado, seria necessário migrar para o plano pago do Firebase e implementar push notifications de servidor — o que fica fora do escopo atual.
+
 ## Instalar como app (PWA)
 
 O site pode ser adicionado à tela inicial do celular (ou instalado no computador) e abrir como se fosse um app nativo, sem barra de endereço do navegador.

@@ -11,7 +11,7 @@
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v1";
+const CACHE_NAME = "reverse-life-v2";
 
 const APP_SHELL = [
   "./",
