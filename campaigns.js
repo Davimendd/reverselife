@@ -33,6 +33,7 @@ const eventList = document.getElementById("eventList");
 const eventLogEmpty = document.getElementById("eventLogEmpty");
 const eventCount = document.getElementById("eventCount");
 const notifyBtn = document.getElementById("notifyBtn");
+const notifyTestBtn = document.getElementById("notifyTestBtn");
 
 const createCampaignBtn = document.getElementById("createCampaignBtn");
 const campaignModal = document.getElementById("campaignModal");
@@ -543,6 +544,7 @@ function refreshNotifyUI(){
   if (!notifyBtn) return;
   if (!("Notification" in window)) {
     notifyBtn.hidden = true;
+    if (notifyTestBtn) notifyTestBtn.hidden = true;
     return;
   }
   const active = Notification.permission === "granted" && !isNotifyMuted();
@@ -551,6 +553,8 @@ function refreshNotifyUI(){
   notifyBtn.title = Notification.permission === "denied"
     ? "notificações bloqueadas — libere manualmente nas configurações do site no navegador"
     : (active ? "notificações ativadas — clique para silenciar" : "ativar notificações");
+
+  if (notifyTestBtn) notifyTestBtn.hidden = Notification.permission !== "granted";
 }
 
 if (notifyBtn) {
@@ -579,6 +583,28 @@ if (notifyBtn) {
     // permissão do navegador já concedida — alterna o "mudo" interno do site
     setNotifyMuted(!isNotifyMuted());
     refreshNotifyUI();
+  });
+}
+
+if (notifyTestBtn) {
+  notifyTestBtn.addEventListener("click", () => {
+    if (!("Notification" in window)) {
+      alert("Este navegador não suporta notificações (comum no Safari do iPhone/iPad fora do app instalado).");
+      return;
+    }
+    if (Notification.permission !== "granted") {
+      alert("Ative as notificações primeiro, clicando no sino.");
+      return;
+    }
+    try {
+      new Notification("🧪 Teste — Reverse Life", {
+        body: "Se você está vendo isso, o navegador consegue mostrar notificações deste site normalmente.",
+        icon: "icons/icon-192.png"
+      });
+    } catch (err) {
+      console.error("Falha no teste de notificação:", err);
+      alert("Erro ao tentar mostrar a notificação de teste — veja o console (F12) para detalhes.");
+    }
   });
 }
 

@@ -7,11 +7,11 @@
 // rolagens em tempo real ou dados das campanhas.
 //
 // Ao publicar uma nova versão do site, aumente o número em
-// CACHE_NAME (ex: "reverse-life-v2") pra forçar os navegadores
+// CACHE_NAME (ex: "reverse-life-v3") pra forçar os navegadores
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v2";
+const CACHE_NAME = "reverse-life-v3";
 
 const APP_SHELL = [
   "./",
