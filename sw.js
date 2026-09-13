@@ -7,11 +7,11 @@
 // rolagens em tempo real ou dados das campanhas.
 //
 // Ao publicar uma nova versão do site, aumente o número em
-// CACHE_NAME (ex: "reverse-life-v3") pra forçar os navegadores
+// CACHE_NAME (ex: "reverse-life-v4") pra forçar os navegadores
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v3";
+const CACHE_NAME = "reverse-life-v4";
 
 const APP_SHELL = [
   "./",
@@ -71,6 +71,19 @@ self.addEventListener("fetch", (event) => {
       // serve do cache na hora (se existir) e atualiza em segundo plano;
       // sem cache, espera a rede
       return cached || networkFetch;
+    })
+  );
+});
+
+// clique em uma notificação: foca numa aba já aberta do site, ou abre uma nova
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("./index.html");
     })
   );
 });

@@ -540,6 +540,29 @@ function canNotify(){
   return ("Notification" in window) && Notification.permission === "granted" && !isNotifyMuted();
 }
 
+// Mostra a notificação através do service worker sempre que possível —
+// no Android (e em PWAs instalados de modo geral), o navegador não deixa
+// usar "new Notification(...)" diretamente quando existe um service worker
+// registrado; é preciso passar por registration.showNotification().
+async function showAppNotification(title, options){
+  if ("serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, options);
+      return true;
+    } catch (err) {
+      console.error("Falha ao mostrar notificação via service worker:", err);
+    }
+  }
+  try {
+    new Notification(title, options);
+    return true;
+  } catch (err) {
+    console.error("Falha ao mostrar notificação:", err);
+    return false;
+  }
+}
+
 function refreshNotifyUI(){
   if (!notifyBtn) return;
   if (!("Notification" in window)) {
@@ -571,7 +594,7 @@ if (notifyBtn) {
       const result = await Notification.requestPermission();
       if (result === "granted") {
         setNotifyMuted(false);
-        new Notification("🔔 Reverse Life", {
+        showAppNotification("🔔 Reverse Life", {
           body: "Notificações ativadas — você será avisado sobre mudanças na sua ficha mesmo com a aba em segundo plano.",
           icon: "icons/icon-192.png"
         });
@@ -587,7 +610,7 @@ if (notifyBtn) {
 }
 
 if (notifyTestBtn) {
-  notifyTestBtn.addEventListener("click", () => {
+  notifyTestBtn.addEventListener("click", async () => {
     if (!("Notification" in window)) {
       alert("Este navegador não suporta notificações (comum no Safari do iPhone/iPad fora do app instalado).");
       return;
@@ -596,13 +619,11 @@ if (notifyTestBtn) {
       alert("Ative as notificações primeiro, clicando no sino.");
       return;
     }
-    try {
-      new Notification("🧪 Teste — Reverse Life", {
-        body: "Se você está vendo isso, o navegador consegue mostrar notificações deste site normalmente.",
-        icon: "icons/icon-192.png"
-      });
-    } catch (err) {
-      console.error("Falha no teste de notificação:", err);
+    const ok = await showAppNotification("🧪 Teste — Reverse Life", {
+      body: "Se você está vendo isso, o navegador consegue mostrar notificações deste site normalmente.",
+      icon: "icons/icon-192.png"
+    });
+    if (!ok) {
       alert("Erro ao tentar mostrar a notificação de teste — veja o console (F12) para detalhes.");
     }
   });
@@ -611,17 +632,12 @@ if (notifyTestBtn) {
 function sendNotification(title, body){
   if (!canNotify()) return;
   if (!document.hidden) return; // a interface já mostra a mudança ao vivo; só notifica em segundo plano
-  try {
-    const notif = new Notification(title, {
-      body,
-      icon: "icons/icon-192.png",
-      badge: "icons/icon-192.png",
-      tag: `rl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    });
-    notif.onclick = () => { window.focus(); notif.close(); };
-  } catch (err) {
-    console.error("Falha ao mostrar notificação:", err);
-  }
+  showAppNotification(title, {
+    body,
+    icon: "icons/icon-192.png",
+    badge: "icons/icon-192.png",
+    tag: `rl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  });
 }
 
 // snapshot leve de cada personagem, usado só para comparar com a
