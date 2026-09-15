@@ -8,7 +8,8 @@ const ITEM_CATEGORIES = {
   alimento: { label: "Alimento", icon: "🍗" },
   bebida: { label: "Bebida", icon: "🥤" },
   arma: { label: "Arma", icon: "🗡️" },
-  equipamento: { label: "Equipamento", icon: "🎒" }
+  equipamento: { label: "Equipamento", icon: "🎒" },
+  cura: { label: "Cura", icon: "💉" }
 };
 
 function categoryIcon(category){
@@ -26,6 +27,7 @@ const campaignsModeEl = document.getElementById("campaignsMode");
 const backToCampaignsBtn = document.getElementById("backToCampaigns");
 const campaignHeaderEl = document.getElementById("campaignHeader");
 const htPanel = document.getElementById("htPanel");
+const cureConfigEl = document.getElementById("cureConfig");
 const characterGrid = document.getElementById("characterGrid");
 const characterEmpty = document.getElementById("characterEmpty");
 const characterSearch = document.getElementById("characterSearch");
@@ -212,7 +214,7 @@ async function initFirebaseBackend(){
     const charsRef = collection(db, "campaigns", campaignId, "characters");
     const docRef = await addDoc(charsRef, {
       fullName, gender, strength, weakness, photoUrl,
-      creator, creatorUid, damage: 0, injuries: "", medkits: 0, items: [], createdAt: serverTimestamp()
+      creator, creatorUid, damage: 0, injuries: "", items: [], createdAt: serverTimestamp()
     });
     return docRef.id;
   };
@@ -374,7 +376,7 @@ function initLocalBackend(){
     }
     const id = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const list = readCharacters(campaignId);
-    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, creatorUid, damage: 0, injuries: "", medkits: 0, items: [], createdAt: Date.now() });
+    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, creatorUid, damage: 0, injuries: "", items: [], createdAt: Date.now() });
     writeCharacters(campaignId, list);
     notifyCharacters(campaignId);
     if (channel) channel.postMessage({ type: "character", campaignId });
@@ -749,6 +751,7 @@ function renderCampaignCard(campaign){
           currentCampaign = updated;
           renderCampaignHeader(updated);
           renderHungerThirstPanel(updated);
+          renderCureConfig(updated);
           applyCharacterFilter();
         }
       }
@@ -929,6 +932,47 @@ async function bulkAdjustAll(statKey, delta, label, icon){
 }
 
 // ------------------------------------------------------------
+// configuração da cura padrão dos itens de categoria "cura"
+// ------------------------------------------------------------
+function renderCureConfig(campaign){
+  const isNarrator = isCurrentUserCampaignCreator(campaign);
+  if (!isNarrator) {
+    cureConfigEl.hidden = true;
+    cureConfigEl.innerHTML = "";
+    return;
+  }
+
+  cureConfigEl.hidden = false;
+  cureConfigEl.innerHTML = `
+    <span class="cure-config-label">💉 cura padrão dos itens de categoria "cura":</span>
+    <input type="number" id="curePercentInput" class="damage-input" min="1" max="100" value="${campaign.curePercent ?? 30}">
+    <span class="ht-penalty-suffix">%</span>
+    <button class="btn-mini" id="curePercentSave">salvar</button>
+    <p class="cure-config-error" id="cureConfigError"></p>
+  `;
+
+  const saveBtn = document.getElementById("curePercentSave");
+  saveBtn.addEventListener("click", async () => {
+    const input = document.getElementById("curePercentInput");
+    const errorEl = document.getElementById("cureConfigError");
+    const val = parseInt(input.value, 10);
+    if (!Number.isFinite(val) || val < 1 || val > 100) {
+      errorEl.textContent = "informe uma porcentagem entre 1 e 100.";
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      await campaignsAPI.patchCampaign(campaign.id, { curePercent: val });
+      logEvent("💉", `<b>${escapeHtml(getCurrentHandle())}</b> definiu a cura padrão dos itens de cura em ${val}%.`);
+    } catch (err) {
+      console.error("Falha ao salvar cura padrão:", err);
+      errorEl.textContent = describeError(err, "erro ao salvar.");
+    }
+    saveBtn.disabled = false;
+  });
+}
+
+// ------------------------------------------------------------
 // histórico de eventos da campanha
 // ------------------------------------------------------------
 function eventTimeLabel(date){
@@ -981,6 +1025,7 @@ function openCampaign(campaign){
   currentCampaign = campaign;
   renderCampaignHeader(campaign);
   renderHungerThirstPanel(campaign);
+  renderCureConfig(campaign);
   campaignListView.hidden = true;
   campaignDetailView.hidden = false;
 
@@ -1027,6 +1072,8 @@ backToCampaignsBtn.addEventListener("click", () => {
   previousCharacterStates = new Map();
   htPanel.hidden = true;
   htPanel.innerHTML = "";
+  cureConfigEl.hidden = true;
+  cureConfigEl.innerHTML = "";
   campaignDetailView.hidden = true;
   campaignListView.hidden = false;
 });
@@ -1379,16 +1426,13 @@ function renderCharacterCard(character){
 
   const canEditDamage = isCampaignCreator;
   const canEditInjuries = isCampaignCreator || isCharCreator;
-  const canManageMedkit = isCampaignCreator; // só o narrador adiciona/remove kits
-  const canUseMedkit = isCampaignCreator || isCharCreator; // quem criou a ficha pode gastar os kits que ela já tem
   const canManageItems = isCampaignCreator; // só o narrador adiciona/ajusta quantidade/exclui itens
-  const canTransferItems = isCampaignCreator || isCharCreator; // narrador ou dono da ficha podem enviar itens pra outra ficha
+  const canTransferItems = isCampaignCreator || isCharCreator; // narrador ou dono da ficha podem enviar/usar itens
   const canEditHungerThirst = isCampaignCreator; // só o narrador ajusta fome/sede manualmente
   const hungerThirstOn = !!(currentCampaign && currentCampaign.hungerThirstEnabled);
 
   const damage = clampDamage(character.damage || 0);
   const status = damageStatus(damage);
-  const medkits = character.medkits || 0;
   const hunger = character.hunger ?? 3;
   const thirst = character.thirst ?? 3;
   const isExpanded = expandedCharacterIds.has(character.id);
@@ -1484,15 +1528,6 @@ function renderCharacterCard(character){
         ${canEditInjuries ? `<button class="btn-mini injuries-save" data-action="save-injuries">salvar ferimentos</button>` : ""}
       </div>
 
-      <div class="medkit-row">
-        <span class="medkit-count">🩹 kits médicos: <b>${medkits}</b></span>
-        <div class="medkit-actions">
-          ${canManageMedkit ? `<button class="btn-mini" data-action="remove-kit" ${medkits > 0 ? "" : "disabled"}>- kit</button>` : ""}
-          ${canManageMedkit ? `<button class="btn-mini" data-action="add-kit">+ kit</button>` : ""}
-          ${canUseMedkit ? `<button class="btn-mini" data-action="use-kit" ${(medkits > 0 && damage > 0) ? "" : "disabled"}>usar kit (-30%)</button>` : ""}
-        </div>
-      </div>
-
       <div class="inventory-box">
         <div class="inventory-head">
           <span class="injuries-label">inventário</span>
@@ -1510,6 +1545,9 @@ function renderCharacterCard(character){
                 ${item.description ? `<span class="item-desc">${escapeHtml(item.description)}</span>` : ""}
               </div>
               <div class="item-actions">
+                ${(canTransferItems && item.category === "cura")
+                  ? `<button class="btn-mini" data-action="item-cure" data-item-id="${item.id}" ${(item.quantity > 0 && damage > 0) ? "" : "disabled"}>usar (cura)</button>`
+                  : ""}
                 ${(hungerThirstOn && canTransferItems && (item.category === "alimento" || item.category === "bebida"))
                   ? `<button class="btn-mini" data-action="item-consume" data-item-id="${item.id}">consumir</button>`
                   : ""}
@@ -1591,39 +1629,6 @@ function renderCharacterCard(character){
     });
   }
 
-  if (canManageMedkit) {
-    const addBtn = card.querySelector('[data-action="add-kit"]');
-    if (addBtn) {
-      addBtn.addEventListener("click", () => {
-        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { medkits: medkits + 1 })
-          .then(() => logEvent("🩹", `<b>${escapeHtml(getCurrentHandle())}</b> adicionou um kit médico à ficha de <b>${escapeHtml(character.fullName)}</b> (agora com ${medkits + 1}).`))
-          .catch((err) => { console.error("Falha ao adicionar kit médico:", err); showCardError(err, "erro ao adicionar kit médico."); });
-      });
-    }
-    const removeBtn = card.querySelector('[data-action="remove-kit"]');
-    if (removeBtn) {
-      removeBtn.addEventListener("click", () => {
-        if (medkits <= 0) return;
-        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { medkits: medkits - 1 })
-          .then(() => logEvent("🗑️", `<b>${escapeHtml(getCurrentHandle())}</b> removeu um kit médico da ficha de <b>${escapeHtml(character.fullName)}</b> (agora com ${medkits - 1}).`))
-          .catch((err) => { console.error("Falha ao remover kit médico:", err); showCardError(err, "erro ao remover kit médico."); });
-      });
-    }
-  }
-
-  if (canUseMedkit) {
-    const useBtn = card.querySelector('[data-action="use-kit"]');
-    if (useBtn) {
-      useBtn.addEventListener("click", () => {
-        if (medkits <= 0) return;
-        const newDamage = clampDamage(damage - 30);
-        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { damage: newDamage, medkits: medkits - 1 })
-          .then(() => logEvent("💊", `<b>${escapeHtml(getCurrentHandle())}</b> usou um kit médico em <b>${escapeHtml(character.fullName)}</b>: dano de ${damage}% para ${newDamage}% (kits restantes: ${medkits - 1}).`))
-          .catch((err) => { console.error("Falha ao usar kit médico:", err); showCardError(err, "erro ao usar kit médico."); });
-      });
-    }
-  }
-
   if (canManageItems) {
     const addItemBtn = card.querySelector('[data-action="add-item"]');
     if (addItemBtn) {
@@ -1679,6 +1684,26 @@ function renderCharacterCard(character){
         const item = (character.items || []).find((it) => it.id === itemId);
         if (!item) return;
         openTransferModal(character, item);
+      });
+    });
+
+    card.querySelectorAll('[data-action="item-cure"]').forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const itemId = btn.dataset.itemId;
+        const items = character.items || [];
+        const item = items.find((it) => it.id === itemId);
+        if (!item || item.quantity <= 0 || damage <= 0) return;
+
+        const curePct = currentCampaign.curePercent ?? 30;
+        const newDamage = clampDamage(damage - curePct);
+        const newQuantity = item.quantity - 1;
+        const newItems = newQuantity <= 0
+          ? items.filter((it) => it.id !== itemId)
+          : items.map((it) => it.id === itemId ? { ...it, quantity: newQuantity } : it);
+
+        campaignsAPI.patchCharacter(currentCampaign.id, character.id, { items: newItems, damage: newDamage })
+          .then(() => logEvent("💉", `<b>${escapeHtml(getCurrentHandle())}</b> usou <b>${escapeHtml(item.name)}</b> em <b>${escapeHtml(character.fullName)}</b>: dano de ${damage}% para ${newDamage}%.`))
+          .catch((err) => { console.error("Falha ao usar item de cura:", err); showCardError(err, "erro ao usar item."); });
       });
     });
 

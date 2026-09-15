@@ -11,7 +11,7 @@ Site com um dado de 6 lados e um terminal onde toda rolagem feita por qualquer p
 - `identity.js` — login, criar conta e sessão (Firebase Authentication)
 - `sound.js` — efeitos sonoros sintetizados (sem arquivos de áudio)
 - `app.js` — lógica do dado, animação e feed em tempo real
-- `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos, kits médicos, inventário e fome/sede
+- `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos, inventário e fome/sede
 - `manifest.json` — metadados do app instalável (PWA): nome, cores, ícones
 - `sw.js` — service worker: cacheia os arquivos do site pra abrir mais rápido e funcionar offline
 - `pwa.js` — registra o service worker
@@ -131,7 +131,7 @@ Depois de cada rolagem, a descrição completa do resultado aparece abaixo do da
 
 Uma segunda aba, "📖 Campanhas", funciona como salas: qualquer pessoa pode criar uma campanha (nome, descrição, imagem) e qualquer pessoa que acessar o site pode entrar nela e criar uma ficha de personagem (nome completo, gênero, ponto forte, ponto fraco, foto). Todos os personagens da campanha aparecem para todo mundo.
 
-**Fichas compactas**: cada personagem aparece como uma linha compacta (miniatura, nome, gênero, barra de dano) — clique nela pra expandir e ver traços, ferramenta de dano, ferimentos e kits médicos. Isso evita ter que rolar a página inteira quando há várias fichas na campanha. Um campo de busca por nome, acima da lista, ajuda a achar uma ficha específica rapidamente.
+**Fichas compactas**: cada personagem aparece como uma linha compacta (miniatura, nome, gênero, barra de dano) — clique nela pra expandir e ver traços, ferramenta de dano, ferimentos e inventário. Isso evita ter que rolar a página inteira quando há várias fichas na campanha. Um campo de busca por nome, acima da lista, ajuda a achar uma ficha específica rapidamente.
 
 **Barra de dano (0–100%)**, com faixas de status:
 - 0–24%: estável
@@ -144,9 +144,9 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 
 **Ferimentos e limitações**: um campo de texto livre na ficha, editável por quem criou a campanha OU por quem criou aquela ficha específica.
 
-**Editar ficha**: quem criou uma ficha pode editá-la depois de pronta — nome completo, gênero, ponto forte, ponto fraco e foto — através do botão "✎ editar" que aparece no topo do card. Ao trocar a foto, a antiga é substituída; deixando o campo de foto em branco, a foto atual é mantida. Dano, ferimentos e kits médicos continuam com suas próprias regras de permissão, separadas dessa edição.
+**Editar ficha**: quem criou uma ficha pode editá-la depois de pronta — nome completo, gênero, ponto forte, ponto fraco e foto — através do botão "✎ editar" que aparece no topo do card. Ao trocar a foto, a antiga é substituída; deixando o campo de foto em branco, a foto atual é mantida. Dano, ferimentos e inventário continuam com suas próprias regras de permissão, separadas dessa edição.
 
-**Inventário**: cada ficha tem uma lista de itens (nome, descrição, quantidade e categoria — 🍗 alimento, 🥤 bebida, 🗡️ arma ou 🎒 equipamento). Só o narrador pode adicionar itens, aumentar/diminuir a quantidade ou excluir um item. Tanto o narrador quanto quem criou a ficha podem **transferir** um item (ou parte da quantidade) para outra ficha da mesma campanha — como se um personagem entregasse o item a outro. Se a ficha de destino já tiver um item com o mesmo nome e categoria, as quantidades somam em vez de duplicar a entrada.
+**Inventário**: cada ficha tem uma lista de itens (nome, descrição, quantidade e categoria — 🍗 alimento, 🥤 bebida, 🗡️ arma, 🎒 equipamento ou 💉 cura). Só o narrador pode adicionar itens, aumentar/diminuir a quantidade ou excluir um item. Tanto o narrador quanto quem criou a ficha podem **transferir** um item (ou parte da quantidade) para outra ficha da mesma campanha — como se um personagem entregasse o item a outro. Se a ficha de destino já tiver um item com o mesmo nome e categoria, as quantidades somam em vez de duplicar a entrada.
 
 **Sistema de fome e sede (opcional)**: um painel logo acima da lista de personagens permite ao narrador ligar ou desligar esse sistema pra campanha inteira. Quando ativo, cada ficha ganha duas barras de 3 unidades — 🍗 fome e 💧 sede:
 - O narrador pode ajustar cada uma manualmente, ficha por ficha (+/-).
@@ -155,9 +155,9 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 - **Penalidade por fome/sede zerada**: no mesmo painel, o narrador define uma porcentagem fixa (padrão 10%). Sempre que fome ou sede de uma ficha **já estiver em 0** e for reduzida de novo (manualmente ou pela ação em massa), em vez de tentar ir abaixo de zero, a ficha sofre esse tanto de dano — simulando o desgaste de continuar sem comer ou beber. Se esse dano levar a ficha a 100%, a morte é registrada normalmente.
 - Todas essas mudanças ficam registradas no histórico da campanha.
 
-**Histórico de eventos**: cada campanha tem um mini-log próprio, separado do terminal de dados, registrando o que acontece com as fichas ao longo do tempo — mudanças de dano (quem aplicou, quanto e o novo total), uso/adição/remoção de kits médicos, edições de ferimentos, criação e edição de fichas, e a morte de um personagem ao atingir 100% de dano. Fica visível para todos que entram na campanha, mais recente primeiro.
+**Histórico de eventos**: cada campanha tem um mini-log próprio, separado do terminal de dados, registrando o que acontece com as fichas ao longo do tempo — mudanças de dano (quem aplicou, quanto e o novo total), uso/adição/remoção de itens do inventário, edições de ferimentos, criação e edição de fichas, e a morte de um personagem ao atingir 100% de dano. Fica visível para todos que entram na campanha, mais recente primeiro.
 
-**Kit médico**: só o narrador (criador da campanha) pode adicionar ou remover kits médicos de uma ficha. Quem criou a ficha pode apenas usar/gastar os kits que ela já tiver. Usar um kit reduz o dano em 30 pontos percentuais e consome uma unidade — o campo de ferimentos continua livre para editar manualmente caso o kit também resolva alguma limitação registrada ali.
+**Itens de cura**: em vez de um sistema fixo de "kits médicos", a cura agora é só mais uma categoria de item (💉 Cura) no inventário — pode ser qualquer coisa que o narrador queira (um kit de primeiros socorros, um remédio, magia de cura, etc.). Itens dessa categoria ganham um botão **"usar (cura)"**, disponível pro narrador ou pra quem criou a ficha: usar reduz o dano em uma porcentagem fixa (**30% por padrão**) e consome uma unidade do item. Essa porcentagem pode ser ajustada pelo narrador num painel acima da lista de personagens, valendo para todos os itens de cura da campanha.
 
 **⚠️ Sobre segurança:** com login de verdade, as permissões agora são baseadas na conta autenticada (`uid`) e podem ser aplicadas nas regras do Firestore abaixo — não é mais só a interface escondendo botões. Ainda assim, as regras abaixo autorizam a escrita para "narrador da campanha OU dono da ficha" de forma ampla (por simplicidade); elas não distinguem no servidor, por exemplo, que só o narrador pode mexer no dano enquanto o dono da ficha só pode editar ferimentos — essa distinção mais fina continua sendo feita pela interface (que esconde os botões certos para cada pessoa). Para separar isso também no servidor seria necessário usar Cloud Functions ou regras bem mais elaboradas, o que fica fora do escopo de um site estático como este.
 
@@ -200,7 +200,8 @@ service cloud.firestore {
         allow update: if request.auth != null && (
           !('creatorUid' in resource.data) ||
           request.auth.uid == resource.data.creatorUid ||
-          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items'])
         );
         allow delete: if false;
       }
@@ -216,6 +217,8 @@ service cloud.firestore {
 ```
 
 A condição `!('creatorUid' in resource.data)` existe para não travar campanhas/fichas criadas **antes** de o site ter login (elas não têm esse campo salvo) — nesses casos, qualquer pessoa logada ainda consegue editar. Fichas e campanhas criadas depois do login já vêm com `creatorUid` preenchido e passam a valer só para quem criou.
+
+A condição `request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items'])` existe especificamente para a **transferência de itens**: como enviar um item mexe na ficha de quem envia *e* na ficha de quem recebe ao mesmo tempo, essa regra libera qualquer pessoa autenticada a alterar **somente o campo `items`** de qualquer ficha da campanha — sem abrir brecha para mexer em dano, ferimentos ou qualquer outro campo de uma ficha que não seja sua.
 
 Sem Firebase configurado, login, campanhas e personagens funcionam em modo local (localStorage + BroadcastChannel), com as imagens guardadas como base64 — funciona só entre abas do mesmo navegador, ideal para testar antes de configurar.
 
