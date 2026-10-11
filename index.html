@@ -164,6 +164,8 @@
       <p class="modal-rules" id="charPhotoHint"></p>
       <div class="image-preview" id="charPhotoPreview" hidden><img alt="Pré-visualização"></div>
 
+      <div class="attr-block" id="charAttrBlock" hidden></div>
+
       <p class="modal-error" id="characterError"></p>
 
       <button class="roll-btn" id="characterSubmit">
@@ -244,6 +246,31 @@
   </div>
 </div>
 
+<!-- ===================== modal: misturar ervas ===================== -->
+<div class="modal-overlay hidden" id="mixModal">
+  <div class="modal-card">
+    <div class="terminal-bar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">/bin/misturar_ervas</span>
+      <button class="modal-close" id="mixModalClose" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="modal-label" for="mixHerbA">primeira erva</label>
+      <select id="mixHerbA" class="modal-select"></select>
+
+      <label class="modal-label" for="mixHerbB">segunda erva</label>
+      <select id="mixHerbB" class="modal-select"></select>
+
+      <p class="mix-effect" id="mixEffect"></p>
+      <p class="modal-error" id="mixError"></p>
+
+      <button class="roll-btn" id="mixSubmit">
+        <span class="roll-btn-text">MISTURAR E USAR</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
 
   <header class="top">
@@ -266,99 +293,8 @@
     </div>
   </header>
 
-  <nav class="tab-nav" id="tabNav">
-    <button class="tab-btn active" data-tab="tabDice">🎲 Dados</button>
-    <button class="tab-btn" data-tab="tabCampaigns">📖 Campanhas</button>
-  </nav>
-
-  <!-- ===================== ABA: DADOS ===================== -->
-  <div class="tab-panel active" id="tabDice">
-
-    <section class="mode-bar">
-      <div class="mode-select" id="modeSelect" role="tablist">
-        <button class="mode-btn" data-mode="tabela" role="tab">🎲 Tabela do Dado</button>
-        <button class="mode-btn" data-mode="simplificada" role="tab">⚙️ Variação Simplificada</button>
-        <button class="mode-btn" data-mode="execucao" role="tab">🎯 Dado de Execução</button>
-      </div>
-      <p class="mode-intro" id="modeIntro"></p>
-    </section>
-
-    <main class="grid">
-
-      <section class="die-panel">
-        <div class="panel-label">
-          <span>01</span>
-          <h2>o dado</h2>
-        </div>
-
-        <div class="die-stage">
-          <div class="die-glow" id="dieGlow"></div>
-          <button class="die" id="dieBtn" aria-label="Rolar o dado">
-            <svg id="dieSvg" viewBox="0 0 200 200" class="die-svg">
-              <rect x="8" y="8" width="184" height="184" rx="28" class="die-face"/>
-              <g id="pips"></g>
-            </svg>
-          </button>
-        </div>
-
-        <div class="result-line">
-          <span class="result-label">último resultado</span>
-          <span class="result-value" id="resultValue">--</span>
-        </div>
-
-        <div class="outcome-box" id="outcomeBox" hidden>
-          <div class="outcome-head">
-            <span class="outcome-emoji" id="outcomeEmoji"></span>
-            <span class="outcome-title" id="outcomeTitle"></span>
-          </div>
-          <p class="outcome-desc" id="outcomeDesc"></p>
-        </div>
-
-        <button class="roll-btn" id="rollBtn">
-          <span class="roll-btn-text">ROLAR D6</span>
-          <span class="roll-btn-key">[ ESPAÇO ]</span>
-        </button>
-
-        <p class="hint">cada rolagem é transmitida ao vivo para o terminal ao lado. não há como desfazer o destino.</p>
-      </section>
-
-      <section class="terminal-panel">
-        <div class="panel-label">
-          <span>02</span>
-          <h2>terminal compartilhado</h2>
-        </div>
-
-        <div class="terminal">
-          <div class="terminal-bar">
-            <div class="terminal-dots"><span></span><span></span><span></span></div>
-            <span class="terminal-title">/var/log/reverse_life.feed</span>
-            <span class="terminal-count" id="rollCount">0 rolagens</span>
-          </div>
-          <div class="terminal-body" id="terminalBody">
-            <div class="terminal-boot" id="terminalBoot">
-              <p>&gt; inicializando feed compartilhado...</p>
-              <p>&gt; aguardando conexão com o servidor de estado...</p>
-            </div>
-            <div class="feed" id="feed"></div>
-          </div>
-          <div class="terminal-input">
-            <span class="prompt">&gt;</span>
-            <span class="terminal-input-text">aguardando próxima rolagem</span>
-            <span class="cursor" aria-hidden="true"></span>
-          </div>
-        </div>
-      </section>
-
-    </main>
-
-    <footer class="foot">
-      <span>REVERSE LIFE © feed em tempo real</span>
-      <span id="modeTag">modo: offline (configure o firebase)</span>
-    </footer>
-  </div>
-
   <!-- ===================== ABA: CAMPANHAS ===================== -->
-  <div class="tab-panel" id="tabCampaigns">
+  <div class="tab-panel active" id="tabCampaigns">
 
     <!-- lista de campanhas -->
     <section id="campaignListView">
@@ -382,6 +318,8 @@
 
       <div class="campaign-header" id="campaignHeader"></div>
 
+      <div class="ht-panel" id="rulesPanel" hidden></div>
+      <div class="ht-panel" id="campDice" hidden></div>
       <div class="ht-panel" id="htPanel" hidden></div>
 
       <div class="panel-label campaigns-head">

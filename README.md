@@ -1,6 +1,6 @@
 # Reverse Life
 
-Site com um dado de 6 lados e um terminal onde toda rolagem feita por qualquer pessoa aparece em tempo real para todo mundo que estiver com o site aberto. Visual preto e vermelho, estilo terminal/glitch.
+Site de apoio a mesas de RPG de terror: campanhas com fichas de personagem, inventário, dano, regras opcionais e **rolagem de dados dentro de cada campanha** (D6 ou D20 + atributos), com histórico compartilhado em tempo real. Visual preto e vermelho, estilo terminal/glitch.
 
 ## Arquivos
 
@@ -9,6 +9,8 @@ Site com um dado de 6 lados e um terminal onde toda rolagem feita por qualquer p
 - `firebase-config.js` — onde você cola as credenciais do seu Firebase
 - `firebase-core.js` — inicialização compartilhada do Firebase (Firestore + Storage)
 - `identity.js` — login, criar conta e sessão (Firebase Authentication)
+- `rules.js` — regras puras do jogo: atributos, estados do corpo, sangramento, testes de D20 e ervas
+- `dice-data.js` — tabelas do D6, compartilhadas entre o dado global e o das campanhas
 - `sound.js` — efeitos sonoros sintetizados (sem arquivos de áudio)
 - `app.js` — lógica do dado, animação e feed em tempo real
 - `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos, inventário e fome/sede
@@ -54,7 +56,7 @@ Basta abrir `index.html` num servidor local (por exemplo, com a extensão "Live 
 
 ## Deixando o terminal compartilhado de verdade (entre qualquer pessoa, de qualquer lugar)
 
-Para que a rolagem de uma pessoa apareça no terminal de todas as outras pessoas — e não só entre abas do seu navegador — é preciso um banco de dados em tempo real. O site já vem pronto para usar o **Firestore do Firebase** (gratuito no plano usado aqui).
+Para que campanhas, fichas e rolagens apareçam para todo mundo — e não só entre abas do seu navegador — é preciso um banco de dados em tempo real. O site já vem pronto para usar o **Firestore do Firebase** (gratuito no plano usado aqui).
 
 Passo a passo:
 
@@ -117,15 +119,15 @@ Todos os efeitos são gerados na hora pelo navegador (Web Audio API) — não h�
 - O ícone de alto-falante no topo da página liga/desliga o som; a preferência fica salva no navegador.
 - Por política dos navegadores, o som só é liberado depois do primeiro clique na página (isso já acontece naturalmente ao rolar o dado).
 
-## Sistemas de dado (tabelas de resultado)
+## Sistemas de dado (tabelas de resultado do D6)
 
-Acima do dado há um seletor com três sistemas — a escolha fica salva no navegador e é enviada junto com cada rolagem, então o terminal mostra qual sistema estava ativo para quem rolou:
+A rolagem existe **somente dentro das campanhas**: cada campanha tem o seu painel `/dev/dados`, e todo resultado é registrado no histórico dela. Em campanhas D6, o painel oferece três sistemas de tabela:
 
 - **🎲 Tabela do Dado** — resultado individual para cada face (1 a 6), de Morte Instantânea a Fuga Perfeita.
 - **⚙️ Variação Simplificada** — dois blocos: 1–3 é Dano, 4–6 é Escapou.
 - **🎯 Dado de Execução** — usado quando o personagem é alcançado e há chance de execução, de Ataque Devastador a Escape Perfeito.
 
-Depois de cada rolagem, a descrição completa do resultado aparece abaixo do dado, e um resumo (ex: "🟢 Dano Padrão") é anexado à linha correspondente no terminal.
+Depois de cada rolagem, a descrição completa do resultado aparece no painel. Quando sai o pior resultado de uma tabela (🔴), toca o alarme de terminal.
 
 ## Campanhas de RPG
 
@@ -156,6 +158,16 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 - Todas essas mudanças ficam registradas no histórico da campanha.
 
 **Histórico de eventos**: cada campanha tem um mini-log próprio, separado do terminal de dados, registrando o que acontece com as fichas ao longo do tempo — mudanças de dano (quem aplicou, quanto e o novo total), uso/adição/remoção de itens do inventário, edições de ferimentos, criação e edição de fichas, e a morte de um personagem ao atingir 100% de dano. Fica visível para todos que entram na campanha, mais recente primeiro.
+
+**Regras opcionais da campanha** (painel `/etc/regras.cfg`, só o narrador liga/desliga):
+
+- 🎲 **Sistema de dados por campanha**: a rolagem acontece somente dentro de cada campanha (painel `/dev/dados`) e o resultado vai pro histórico dela. O narrador escolhe entre **D6** (com as 3 variações de tabela) e **D20 + atributos**.
+- **D20 + atributos**: ao criar uma ficha numa campanha D20, a pessoa distribui exatamente **10 pontos** entre Força, Agilidade, Vigor, Carisma e Intelecto (máx. 5 em cada) — depois de criada, não dá mais pra alterar. Dá pra rolar um **d20 puro** ou um **atributo** (1d20 + valor), e o site mostra o total e a conta separada. Testes: **Normal** (10+), **Difícil** (15+) e **Arriscado** (18+), com sucesso/falha automáticos. Cada ponto de **Vigor** soma +5 ao limite de dano (Vigor 2 = morre em 110%) e desloca na mesma medida os limites entre os estados do corpo.
+- 🌀 **Sanidade**: barra de 0 a 100% ajustada pelo narrador; ao chegar em 100% a ficha fica **insana** (perde o juízo, não luta direito, pode ferir colegas e chama atenção) e ganha um visual próprio.
+- 🩸 **Sangramento**: liga os estados do corpo ao dano — **Normal** (até 50%), **Mancando** (51–80%) e **No Chão** (81–99%) — e permite ao narrador marcar uma ficha como **Sangrando**: 5% de dano a cada 10 minutos durante 1 hora (30% no total). O desconto é aplicado automaticamente (pelo navegador do narrador ou do dono da ficha que estiver com a campanha aberta; o que passou enquanto ninguém estava online é compensado na próxima abertura). Itens de **cura** e a **Erva Vermelha** encerram o sangramento, e o narrador também pode parar manualmente.
+- 🌿 **Ervas** (exigem sanidade ou sangramento ativos): novas categorias de item — 🌿 **Verde** (restaura vida, usa a mesma % da cura da campanha, mas não para o sangramento), 🌺 **Vermelha** (para o sangramento) e 🫐 **Azul** (restaura 20% de sanidade). O botão **🧪 misturar ervas** (narrador ou dono da ficha) gasta uma erva de cada cor e aplica os dois efeitos juntos: Verde+Vermelha, Verde+Azul ou Vermelha+Azul (esta última sem restaurar vida).
+
+Nenhuma regra nova do Firestore é necessária: tudo reaproveita os documentos de campanha, ficha e histórico que já existem.
 
 **Itens de cura**: em vez de um sistema fixo de "kits médicos", a cura agora é só mais uma categoria de item (💉 Cura) no inventário — pode ser qualquer coisa que o narrador queira (um kit de primeiros socorros, um remédio, magia de cura, etc.). Itens dessa categoria ganham um botão **"usar (cura)"**, disponível pro narrador ou pra quem criou a ficha: usar reduz o dano em uma porcentagem fixa (**30% por padrão**) e consome uma unidade do item. Essa porcentagem pode ser ajustada pelo narrador num painel acima da lista de personagens, valendo para todos os itens de cura da campanha.
 
@@ -226,6 +238,6 @@ Sem Firebase configurado, login, campanhas e personagens funcionam em modo local
 
 ## Como funciona a rolagem
 
-- Ao clicar no dado, no botão "ROLAR D6" ou apertar espaço, o dado gira e sorteia um valor de 1 a 6.
-- O resultado é enviado ao banco (Firestore ou modo local) e aparece no terminal com horário, handle e valor, para todo mundo conectado.
-- O terminal mostra as últimas 60 rolagens.
+- Entre numa campanha e use o painel `/dev/dados`: no D6, escolha a tabela e clique em **ROLAR D6**; no D20, escolha a ficha, o atributo e o tipo de teste e clique em **ROLAR D20**.
+- O resultado aparece no painel e é registrado no histórico da campanha, com o nome de quem rolou.
+- A rolagem exige estar logado; só o narrador pode escolher o sistema de dados da campanha (D6 ou D20).

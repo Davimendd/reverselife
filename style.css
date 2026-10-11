@@ -2083,6 +2083,107 @@ body{
   }
 }
 
+
+/* ============================================================
+   REGRAS OPCIONAIS: sanidade, sangramento, atributos, ervas, dados da campanha
+   ============================================================ */
+
+.rule-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:6px 0;
+}
+.rule-row + .rule-row{ border-top:1px dashed var(--line); padding-top:12px; }
+.rule-text{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.rule-label{ font-size:12.5px; color:var(--off); }
+.rule-desc{ font-size:11px; color:var(--mute); line-height:1.5; }
+.rule-select{ width:auto; min-width:140px; flex:0 0 auto; }
+.rules-error{ margin:0; font-size:11.5px; color:var(--red-bright); }
+.rules-error:empty{ display:none; }
+
+/* dados dentro da campanha */
+.dice-row{ display:flex; align-items:center; gap:10px; }
+.dice-label{ font-size:11px; color:var(--mute); letter-spacing:0.06em; text-transform:uppercase; min-width:92px; }
+.dice-row .modal-select{ flex:1; }
+.dice-roll{ width:100%; justify-content:center; }
+.dice-result:empty{ display:none; }
+.dice-result-card{
+  display:flex; align-items:center; gap:16px;
+  border:1px solid var(--line); border-left:3px solid var(--red);
+  background:var(--black); padding:12px 16px;
+}
+.dice-result-card.ok{ border-left-color:#4fd67a; }
+.dice-result-card.fail{ border-left-color:var(--red-bright); }
+.dice-big{ font-family:var(--disp); font-size:42px; font-weight:700; color:var(--red-bright); min-width:56px; text-align:center; text-shadow:0 0 14px rgba(255,46,46,0.4); }
+.dice-big.shuffle{ opacity:0.7; }
+.dice-result-card.ok .dice-big{ color:#4fd67a; text-shadow:0 0 14px rgba(79,214,122,0.35); }
+.dice-outcome b{ font-size:13px; color:var(--off); letter-spacing:0.04em; }
+.dice-outcome p{ margin:4px 0 0; font-size:12px; color:var(--mute); line-height:1.55; }
+
+/* bloco de estados dentro da ficha */
+.rules-block{ display:flex; flex-direction:column; gap:10px; border-top:1px solid var(--line); padding-top:14px; }
+.attr-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.attr-chip{ font-size:11px; color:var(--mute); border:1px solid var(--line); background:var(--black); padding:3px 8px; }
+.attr-chip b{ color:var(--red-bright); margin-left:2px; }
+
+.body-state{ border:1px solid var(--line); background:var(--black); padding:8px 10px; display:flex; flex-direction:column; gap:3px; border-left-width:3px; }
+.body-state-name{ font-size:12px; color:var(--off); }
+.body-state-desc{ font-size:11px; color:var(--mute); line-height:1.5; }
+.body-state.state-normal{ border-left-color:#4fd67a; }
+.body-state.state-mancando{ border-left-color:#ff9a3d; }
+.body-state.state-chao{ border-left-color:var(--red-bright); }
+.body-state.state-morto{ border-left-color:#7a0d0d; }
+
+.state-pill{ font-size:10px; font-weight:700; letter-spacing:0.03em; white-space:nowrap; text-transform:uppercase; }
+.state-pill.state-normal{ color:#4fd67a; }
+.state-pill.state-mancando{ color:#ff9a3d; }
+.state-pill.state-chao{ color:var(--red-bright); }
+.state-pill.state-bleeding{ color:#ff5252; animation:critBlink 1.4s ease-in-out infinite; }
+.state-pill.state-insane{ color:#c58bff; }
+
+.bleed-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:11.5px; color:var(--off); }
+.bleed-countdown{ color:var(--red-bright); font-weight:700; }
+
+.sanity-block .damage-head{ display:flex; justify-content:space-between; font-size:11px; color:var(--mute); margin-bottom:6px; }
+.sanity-fill{ background:linear-gradient(90deg,#6a3fb8,#c58bff); }
+.sanity-val{ color:#c58bff; font-weight:700; }
+.sanity-block.insane .sanity-val{ animation:critBlink 1s ease-in-out infinite; }
+.insane-desc{ margin:8px 0 0; font-size:11px; color:#c58bff; line-height:1.5; border-left:2px solid #6a3fb8; padding-left:8px; }
+.sanity-quick{ margin-top:8px; }
+
+.character-card.is-insane{ border-color:#6a3fb8; animation:insanePulse 2.2s ease-in-out infinite; }
+@keyframes insanePulse{
+  0%,100%{ box-shadow:0 0 0 rgba(197,139,255,0); }
+  50%{ box-shadow:0 0 18px 2px rgba(197,139,255,0.45); }
+}
+
+.inventory-head-actions{ display:flex; gap:6px; flex-wrap:wrap; }
+.item-actions .btn-mini[data-action="item-herb"]{ border-color:#2a3a1a; color:#8fd67a; }
+.item-actions .btn-mini[data-action="item-herb"]:hover:not(:disabled){ border-color:#4fd67a; color:#4fd67a; }
+
+/* distribuição de atributos na criação da ficha */
+.attr-block{ margin-top:6px; }
+.attr-left{ margin:0 0 8px; font-size:12px; color:var(--mute); }
+.attr-left b{ color:var(--red-bright); font-size:14px; }
+.attr-left.done b{ color:#4fd67a; }
+.attr-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid var(--line); background:var(--black); padding:8px 10px; margin-bottom:6px; }
+.attr-info{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+.attr-name{ font-size:12.5px; color:var(--off); }
+.attr-desc{ font-size:10.5px; color:var(--mute); line-height:1.4; }
+.attr-ctrl{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+.attr-val{ font-family:var(--disp); font-size:18px; color:var(--red-bright); min-width:18px; text-align:center; }
+
+.mix-effect{ margin:12px 0 0; font-size:12px; color:#8fd67a; line-height:1.5; }
+
+@media (max-width: 640px){
+  .rule-row{ flex-wrap:wrap; }
+  .dice-row{ flex-direction:column; align-items:stretch; gap:4px; }
+  .dice-result-card{ flex-direction:column; text-align:center; }
+  .attr-row{ flex-wrap:wrap; }
+}
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
 }
