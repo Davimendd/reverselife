@@ -36,7 +36,6 @@ const campaignEmpty = document.getElementById("campaignEmpty");
 const campaignsModeEl = document.getElementById("campaignsMode");
 const backToCampaignsBtn = document.getElementById("backToCampaigns");
 const campaignHeaderEl = document.getElementById("campaignHeader");
-const htPanel = document.getElementById("htPanel");
 const cureConfigEl = document.getElementById("cureConfig");
 const rulesPanelEl = document.getElementById("rulesPanel");
 const diceHostEl = document.getElementById("campDice");
@@ -87,6 +86,9 @@ const itemModalClose = document.getElementById("itemModalClose");
 const itemName = document.getElementById("itemName");
 const itemDescription = document.getElementById("itemDescription");
 const itemCategory = document.getElementById("itemCategory");
+const itemPreset = document.getElementById("itemPreset");
+const itemPresetBlock = document.getElementById("itemPresetBlock");
+const itemCategoryBlock = document.getElementById("itemCategoryBlock");
 const itemQuantity = document.getElementById("itemQuantity");
 const itemError = document.getElementById("itemError");
 const itemSubmit = document.getElementById("itemSubmit");
@@ -805,7 +807,6 @@ function renderCampaignCard(campaign){
         if (updated) {
           currentCampaign = updated;
           renderCampaignHeader(updated);
-          renderHungerThirstPanel(updated);
           renderCureConfig(updated);
           renderRulesPanel(updated);
           renderDicePanel(updated);
@@ -846,94 +847,6 @@ function isCurrentUserCampaignCreator(campaign){
 // ------------------------------------------------------------
 // painel de fome e sede (nível campanha) — liga/desliga e ações em massa
 // ------------------------------------------------------------
-function renderHungerThirstPanel(campaign){
-  const isNarrator = isCurrentUserCampaignCreator(campaign);
-  const enabled = !!campaign.hungerThirstEnabled;
-
-  if (!enabled && !isNarrator) {
-    htPanel.hidden = true;
-    htPanel.innerHTML = "";
-    return;
-  }
-
-  htPanel.hidden = false;
-  htPanel.innerHTML = `
-    <div class="ht-panel-bar">
-      <div class="terminal-dots"><span></span><span></span><span></span></div>
-      <span class="ht-panel-title">/etc/sobrevivencia.cfg</span>
-    </div>
-    <div class="ht-panel-body">
-      <div class="ht-toggle-row">
-        <span class="ht-toggle-label">🍗 fome &amp; 💧 sede</span>
-        ${isNarrator
-          ? `<button class="ht-switch ${enabled ? "on" : ""}" id="htToggleBtn" aria-pressed="${enabled}"><span class="ht-switch-knob"></span></button>`
-          : `<span class="ht-status-badge ${enabled ? "on" : ""}">${enabled ? "ativo" : "inativo"}</span>`
-        }
-      </div>
-      ${isNarrator ? `
-        <div class="ht-penalty-row">
-          <span class="ht-penalty-label">dano ao perder fome/sede já zerada:</span>
-          <input type="number" id="htPenaltyInput" class="damage-input" min="0" max="100" value="${campaign.htDamagePenalty ?? 10}">
-          <span class="ht-penalty-suffix">%</span>
-          <button class="btn-mini" id="htPenaltySave">salvar</button>
-        </div>
-      ` : ""}
-      ${enabled && isNarrator ? `
-        <div class="ht-bulk-row">
-          <span class="ht-bulk-label">ação em massa, todas as fichas:</span>
-          <button class="btn-mini" id="htBulkHungerMinus">🍗 -1 fome</button>
-          <button class="btn-mini" id="htBulkThirstMinus">💧 -1 sede</button>
-        </div>
-      ` : ""}
-      <p class="modal-error" id="htError"></p>
-    </div>
-  `;
-
-  const toggleBtn = document.getElementById("htToggleBtn");
-  if (toggleBtn) {
-    toggleBtn.addEventListener("click", async () => {
-      toggleBtn.disabled = true;
-      try {
-        await campaignsAPI.patchCampaign(campaign.id, { hungerThirstEnabled: !enabled });
-        logEvent("🍗💧", `<b>${escapeHtml(getCurrentHandle())}</b> ${!enabled ? "ativou" : "desativou"} o sistema de fome e sede nessa campanha.`);
-      } catch (err) {
-        console.error("Falha ao alternar sistema de fome/sede:", err);
-        const el = document.getElementById("htError");
-        if (el) el.textContent = describeError(err, "erro ao alternar o sistema.");
-        toggleBtn.disabled = false;
-      }
-    });
-  }
-
-  const penaltySaveBtn = document.getElementById("htPenaltySave");
-  if (penaltySaveBtn) {
-    penaltySaveBtn.addEventListener("click", async () => {
-      const input = document.getElementById("htPenaltyInput");
-      const errorEl = document.getElementById("htError");
-      const val = parseInt(input.value, 10);
-      if (!Number.isFinite(val) || val < 0 || val > 100) {
-        if (errorEl) errorEl.textContent = "informe uma porcentagem entre 0 e 100.";
-        return;
-      }
-      penaltySaveBtn.disabled = true;
-      try {
-        await campaignsAPI.patchCampaign(campaign.id, { htDamagePenalty: val });
-        logEvent("⚙️", `<b>${escapeHtml(getCurrentHandle())}</b> definiu a penalidade de dano por fome/sede zerada em ${val}%.`);
-      } catch (err) {
-        console.error("Falha ao salvar penalidade:", err);
-        if (errorEl) errorEl.textContent = describeError(err, "erro ao salvar penalidade.");
-      }
-      penaltySaveBtn.disabled = false;
-    });
-  }
-
-  const bulkHungerBtn = document.getElementById("htBulkHungerMinus");
-  if (bulkHungerBtn) bulkHungerBtn.addEventListener("click", () => bulkAdjustAll("hunger", -1, "fome", "🍗"));
-
-  const bulkThirstBtn = document.getElementById("htBulkThirstMinus");
-  if (bulkThirstBtn) bulkThirstBtn.addEventListener("click", () => bulkAdjustAll("thirst", -1, "sede", "💧"));
-}
-
 async function bulkAdjustAll(statKey, delta, label, icon){
   if (!currentCampaign || !campaignsAPI.bulkPatchCharacters) return;
   const btnId = statKey === "hunger" ? "htBulkHungerMinus" : "htBulkThirstMinus";
@@ -1082,8 +995,9 @@ function logDamageEvent(oldDamage, newDamage, fullName, max = 100){
 function openCampaign(campaign){
   currentCampaign = campaign;
   renderCampaignHeader(campaign);
-  renderHungerThirstPanel(campaign);
   renderCureConfig(campaign);
+  attrRollResults.clear();
+  attrMenu = null;
   renderRulesPanel(campaign);
   renderDicePanel(campaign);
   startBleedTimer();
@@ -1107,7 +1021,6 @@ function openCampaign(campaign){
     unsubscribeCharacters = campaignsAPI.listenCharacters(campaign.id, (list) => {
       checkForNotifications(list);
       lastCharacterList = list;
-      refreshDiceCharSelect();
       checkBleedingTicks();
       applyCharacterFilter();
     });
@@ -1133,8 +1046,6 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
   currentCampaign = null;
   previousCharacterStates = new Map();
-  htPanel.hidden = true;
-  htPanel.innerHTML = "";
   cureConfigEl.hidden = true;
   cureConfigEl.innerHTML = "";
   rulesPanelEl.hidden = true;
@@ -1307,6 +1218,7 @@ function openItemModal(character){
   itemName.value = "";
   itemDescription.value = "";
   populateItemCategories();
+  populateItemPresets();
   itemCategory.value = "alimento";
   itemQuantity.value = "1";
   itemError.textContent = "";
@@ -1324,7 +1236,7 @@ itemSubmit.addEventListener("click", async () => {
 
   const name = itemName.value.trim();
   const description = itemDescription.value.trim();
-  const category = itemCategory.value;
+  const category = itemPreset.value || itemCategory.value; // erva = item pronto (categoria interna da erva)
   const quantity = parseInt(itemQuantity.value, 10);
 
   if (name.length < 1) {
@@ -1521,6 +1433,10 @@ function renderCharacterCard(character){
   const bleedNow = bleedingOn && character.bleeding ? character.bleeding : null;
   const bleedProg = bleedNow ? bleedProgress(bleedNow, Date.now()) : null;
   const hasAttrs = !!(character.attrs && typeof character.attrs === "object");
+  const d20On = !!(currentCampaign && currentCampaign.diceSystem === "d20");
+  const canRollAttrs = isCampaignCreator || isCharCreator; // só o dono da ficha (ou o narrador) rola
+  const menuAttr = (attrMenu && attrMenu.charId === character.id && canRollAttrs && d20On) ? attrMenu.attr : null;
+  const menuInfo = menuAttr ? ATTRS.find((a) => a.key === menuAttr) : null;
   const hunger = character.hunger ?? 3;
   const thirst = character.thirst ?? 3;
   const isExpanded = expandedCharacterIds.has(character.id);
@@ -1567,7 +1483,13 @@ function renderCharacterCard(character){
 
       ${(bleedingOn || sanityOn || hasAttrs) ? `
         <div class="rules-block">
-          ${hasAttrs ? `<div class="attr-chips">${ATTRS.map((a) => `<span class="attr-chip" title="${escapeHtml(a.desc)}">${a.icon} ${a.label} <b>${attrValue(character, a.key)}</b></span>`).join("")}</div>` : ""}
+          ${hasAttrs ? `
+            <div class="attr-chips">${ATTRS.map((a) => (canRollAttrs && d20On)
+              ? `<button type="button" class="attr-chip clickable ${menuAttr === a.key ? "active" : ""}" data-action="attr-roll" data-attr="${a.key}" title="${escapeHtml(a.desc)} — clique para rolar">${a.icon} ${a.label} <b>${attrValue(character, a.key)}</b></button>`
+              : `<span class="attr-chip" title="${escapeHtml(a.desc)}">${a.icon} ${a.label} <b>${attrValue(character, a.key)}</b></span>`).join("")}</div>
+            ${menuInfo ? `<div class="attr-roll-menu"><span>🎲 rolar <b>${menuInfo.label}</b> (+${attrValue(character, menuInfo.key)}):</span>${Object.entries(D20_TESTS).map(([k, t]) => `<button type="button" class="btn-mini" data-action="attr-test" data-test="${k}">${t.label} (${t.min}+)</button>`).join("")}<button type="button" class="btn-mini" data-action="attr-cancel">cancelar</button></div>` : ""}
+            <div class="attr-roll-result" data-char-id="${character.id}">${attrRollResults.get(character.id) || ""}</div>
+          ` : ""}
           ${bleedingOn ? `
             <div class="body-state state-${bodySt.key}">
               <span class="body-state-name">${bodySt.icon} <b>${bodySt.label}</b></span>
@@ -1876,6 +1798,18 @@ function renderCharacterCard(character){
       applyHerbUse(character, [item.id], [item.category], (err) => showCardError(err, "erro ao usar erva."));
     });
   });
+  card.querySelectorAll('[data-action="attr-roll"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      attrMenu = (attrMenu && attrMenu.charId === character.id && attrMenu.attr === btn.dataset.attr) ? null : { charId: character.id, attr: btn.dataset.attr };
+      applyCharacterFilter();
+    });
+  });
+  card.querySelectorAll('[data-action="attr-test"]').forEach((btn) => {
+    btn.addEventListener("click", () => rollAttributeFromSheet(character, menuAttr, btn.dataset.test, card));
+  });
+  const attrCancel = card.querySelector('[data-action="attr-cancel"]');
+  if (attrCancel) attrCancel.addEventListener("click", () => { attrMenu = null; applyCharacterFilter(); });
+
   const mixBtn = card.querySelector('[data-action="mix-herbs"]');
   if (mixBtn) mixBtn.addEventListener("click", () => openMixModal(character));
 
@@ -1967,11 +1901,43 @@ function herbUsable(category, damage, bleedNow, sanity){
 }
 
 function populateItemCategories(){
-  const herbsOn = !!(currentCampaign && currentCampaign.herbsEnabled);
+  // ervas não são categorias: aparecem como "item pronto" (ver populateItemPresets)
   itemCategory.innerHTML = Object.entries(ITEM_CATEGORIES)
-    .filter(([key]) => herbsOn || !HERBS[key])
+    .filter(([key]) => !HERBS[key])
     .map(([key, c]) => `<option value="${key}">${c.icon} ${c.label}</option>`).join("");
 }
+
+// itens prontos (ervas): nome e descrição curta já vêm preenchidos
+let presetApplied = false;
+
+function herbPresetDescription(key){
+  const txt = herbEffectText([key], currentCampaign.curePercent ?? 30);
+  return txt.charAt(0).toUpperCase() + txt.slice(1) + ".";
+}
+
+function populateItemPresets(){
+  const herbsOn = !!(currentCampaign && currentCampaign.herbsEnabled);
+  itemPresetBlock.hidden = !herbsOn;
+  itemPreset.innerHTML = `<option value="">— item personalizado —</option>` +
+    Object.entries(HERBS).map(([k, h]) => `<option value="${k}">${h.icon} ${h.label}</option>`).join("");
+  itemPreset.value = "";
+  itemCategoryBlock.hidden = false;
+  presetApplied = false;
+}
+
+itemPreset.addEventListener("change", () => {
+  const key = itemPreset.value;
+  if (key) {
+    itemName.value = HERBS[key].label;
+    itemDescription.value = herbPresetDescription(key);
+    itemCategoryBlock.hidden = true;
+    presetApplied = true;
+  } else {
+    if (presetApplied) { itemName.value = ""; itemDescription.value = ""; }
+    itemCategoryBlock.hidden = false;
+    presetApplied = false;
+  }
+});
 
 // ---------- ervas ----------
 function applyHerbUse(character, consumeIds, types, onError){
@@ -2102,16 +2068,21 @@ function renderAttrBlock(){
   });
 }
 
-// ---------- painel de regras (narrador liga/desliga) ----------
+// ---------- painel de regras (narrador liga/desliga; pode ser recolhido) ----------
+let rulesCollapsed = localStorage.getItem("rl_rules_collapsed") === "1";
+
 function renderRulesPanel(campaign){
   const isNarrator = isCurrentUserCampaignCreator(campaign);
   const sanityOn = !!campaign.sanityEnabled, bleedOn = !!campaign.bleedingEnabled, herbsOn = !!campaign.herbsEnabled;
+  const htOn = !!campaign.hungerThirstEnabled;
   const d20 = campaign.diceSystem === "d20";
 
-  if (!isNarrator && !sanityOn && !bleedOn && !herbsOn && !d20) {
+  if (!isNarrator && !sanityOn && !bleedOn && !herbsOn && !htOn && !d20) {
     rulesPanelEl.hidden = true; rulesPanelEl.innerHTML = "";
     return;
   }
+
+  const summary = [d20 ? "D20" : "D6", htOn && "fome/sede", sanityOn && "sanidade", bleedOn && "sangramento", herbsOn && "ervas"].filter(Boolean).join(" · ");
 
   const row = (key, on, label, desc, disabled) => `
     <div class="rule-row">
@@ -2122,10 +2093,13 @@ function renderRulesPanel(campaign){
     </div>`;
 
   rulesPanelEl.hidden = false;
+  rulesPanelEl.classList.toggle("collapsed", rulesCollapsed);
   rulesPanelEl.innerHTML = `
-    <div class="ht-panel-bar">
+    <div class="ht-panel-bar rules-bar" data-rules-toggle role="button" tabindex="0" aria-expanded="${!rulesCollapsed}" title="recolher / expandir">
       <div class="terminal-dots"><span></span><span></span><span></span></div>
       <span class="ht-panel-title">/etc/regras.cfg</span>
+      <span class="rules-summary">${summary}</span>
+      <span class="rules-chevron">▾</span>
     </div>
     <div class="ht-panel-body">
       <div class="rule-row">
@@ -2134,19 +2108,46 @@ function renderRulesPanel(campaign){
           ? `<select class="modal-select rule-select" data-rule-dice><option value="d6" ${!d20 ? "selected" : ""}>D6</option><option value="d20" ${d20 ? "selected" : ""}>D20 + atributos</option></select>`
           : `<span class="ht-status-badge on">${d20 ? "D20" : "D6"}</span>`}
       </div>
+      ${row("hunger", htOn, "🍗 fome &amp; 💧 sede", "Cada ficha ganha duas barras de 3 níveis. Alimentos e bebidas do inventário recuperam 1 nível.", false)}
+      ${isNarrator && htOn ? `
+        <div class="ht-penalty-row">
+          <span class="ht-penalty-label">dano ao perder fome/sede já zerada:</span>
+          <input type="number" id="htPenaltyInput" class="damage-input" min="0" max="100" value="${campaign.htDamagePenalty ?? 10}">
+          <span class="ht-penalty-suffix">%</span>
+          <button class="btn-mini" id="htPenaltySave">salvar</button>
+        </div>
+        <div class="ht-bulk-row">
+          <span class="ht-bulk-label">ação em massa, todas as fichas:</span>
+          <button class="btn-mini" id="htBulkHungerMinus">🍗 -1 fome</button>
+          <button class="btn-mini" id="htBulkThirstMinus">💧 -1 sede</button>
+        </div>` : ""}
       ${row("sanity", sanityOn, "🌀 sanidade", "Ao chegar em 100% o personagem fica insano: perde o juízo, não luta direito, pode ferir os colegas e chama atenção.", false)}
       ${row("bleeding", bleedOn, "🩸 sangramento", "Estados ligados ao dano: Normal (até 50%), Mancando (51–80%) e No Chão (81–99%). O narrador pode marcar um personagem como Sangrando: 5% de dano a cada 10 min durante 1 hora (30% no total).", false)}
-      ${row("herbs", herbsOn, "🌿 ervas", "Exige sanidade ou sangramento ativos. 🌿 Verde: restaura vida, mas não para o sangramento · 🌺 Vermelha: para o sangramento · 🫐 Azul: restaura 20% de sanidade · duas ervas podem ser misturadas (narrador ou jogador).", !(sanityOn || bleedOn) && !herbsOn)}
-      <p class="rules-error"></p>
+      ${row("herbs", herbsOn, "🌿 ervas", "Exige sanidade ou sangramento ativos. Itens prontos: 🌿 Verde restaura vida, mas não para o sangramento · 🌺 Vermelha para o sangramento · 🫐 Azul restaura 20% de sanidade · duas ervas podem ser misturadas (narrador ou jogador).", !(sanityOn || bleedOn) && !herbsOn)}
+      <p class="rules-error" id="htError"></p>
     </div>`;
 
-  const errEl = rulesPanelEl.querySelector(".rules-error");
+  const errEl = rulesPanelEl.querySelector("#htError");
+
+  // recolher / expandir
+  const bar = rulesPanelEl.querySelector("[data-rules-toggle]");
+  const toggleCollapse = () => {
+    rulesCollapsed = !rulesCollapsed;
+    localStorage.setItem("rl_rules_collapsed", rulesCollapsed ? "1" : "0");
+    rulesPanelEl.classList.toggle("collapsed", rulesCollapsed);
+    bar.setAttribute("aria-expanded", String(!rulesCollapsed));
+  };
+  bar.addEventListener("click", toggleCollapse);
+  bar.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggleCollapse(); }
+  });
 
   rulesPanelEl.querySelectorAll("[data-rule]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const key = btn.dataset.rule;
       const patch = {};
       let label = "";
+      if (key === "hunger") { patch.hungerThirstEnabled = !htOn; label = "fome e sede"; }
       if (key === "sanity") { patch.sanityEnabled = !sanityOn; label = "sanidade"; if (!patch.sanityEnabled && !bleedOn) patch.herbsEnabled = false; }
       if (key === "bleeding") { patch.bleedingEnabled = !bleedOn; label = "sangramento"; if (!patch.bleedingEnabled && !sanityOn) patch.herbsEnabled = false; }
       if (key === "herbs") { patch.herbsEnabled = !herbsOn; label = "ervas"; }
@@ -2173,16 +2174,36 @@ function renderRulesPanel(campaign){
       errEl.textContent = describeError(err, "erro ao mudar o sistema de dados.");
     }
   });
+
+  const penaltySaveBtn = rulesPanelEl.querySelector("#htPenaltySave");
+  if (penaltySaveBtn) penaltySaveBtn.addEventListener("click", async () => {
+    const val = parseInt(rulesPanelEl.querySelector("#htPenaltyInput").value, 10);
+    if (!Number.isFinite(val) || val < 0 || val > 100) { errEl.textContent = "informe uma porcentagem entre 0 e 100."; return; }
+    errEl.textContent = "";
+    penaltySaveBtn.disabled = true;
+    try {
+      await campaignsAPI.patchCampaign(campaign.id, { htDamagePenalty: val });
+      logEvent("⚙️", `<b>${escapeHtml(getCurrentHandle())}</b> definiu a penalidade de dano por fome/sede zerada em ${val}%.`);
+    } catch (err) {
+      console.error("Falha ao salvar penalidade:", err);
+      errEl.textContent = describeError(err, "erro ao salvar penalidade.");
+    }
+    penaltySaveBtn.disabled = false;
+  });
+
+  const bulkHunger = rulesPanelEl.querySelector("#htBulkHungerMinus");
+  if (bulkHunger) bulkHunger.addEventListener("click", () => bulkAdjustAll("hunger", -1, "fome", "🍗"));
+  const bulkThirst = rulesPanelEl.querySelector("#htBulkThirstMinus");
+  if (bulkThirst) bulkThirst.addEventListener("click", () => bulkAdjustAll("thirst", -1, "sede", "💧"));
 }
 
 // ---------- rolagem de dados dentro da campanha ----------
-const diceUI = { mode: localStorage.getItem("rl_dice_mode") || DEFAULT_MODE, charId: "", attr: "", test: "normal", resultHtml: "", rolling: false };
+const diceUI = { mode: localStorage.getItem("rl_dice_mode") || DEFAULT_MODE, resultHtml: "", rolling: false };
 if (!DICE_TABLES[diceUI.mode]) diceUI.mode = DEFAULT_MODE;
 
-function diceCharsAvailable(){
-  const narrator = !!(currentCampaign && isCurrentUserCampaignCreator(currentCampaign));
-  return lastCharacterList.filter((c) => narrator || isMineForNotify(c));
-}
+// resultado de atributo mostrado dentro de cada ficha + menu de teste aberto
+const attrRollResults = new Map();
+let attrMenu = null; // { charId, attr }
 
 function d6ResultHtml(r){
   const table = DICE_TABLES[r.mode] || DICE_TABLES[DEFAULT_MODE];
@@ -2202,28 +2223,16 @@ function d20ResultHtml(r){
   </div>`;
 }
 
-function fillD20Selects(){
-  const charSel = diceHostEl.querySelector('[data-dice="char"]');
-  const attrSel = diceHostEl.querySelector('[data-dice="attr"]');
-  const testSel = diceHostEl.querySelector('[data-dice="test"]');
-  if (!charSel || !attrSel || !testSel) return;
-
-  const chars = diceCharsAvailable();
-  if (!chars.some((c) => c.id === diceUI.charId)) diceUI.charId = chars[0] ? chars[0].id : "";
-  const ch = chars.find((c) => c.id === diceUI.charId);
-  if (!ch) diceUI.attr = "";
-
-  const charHtml = `<option value="">(sem ficha — só d20 puro)</option>` + chars.map((c) => `<option value="${c.id}">${escapeHtml(c.fullName)}</option>`).join("");
-  const attrHtml = `<option value="">d20 puro</option>` + ATTRS.map((a) => `<option value="${a.key}" ${ch ? "" : "disabled"}>${a.icon} ${a.label}${ch ? ` (+${attrValue(ch, a.key)})` : ""}</option>`).join("");
-  if (charSel.innerHTML !== charHtml) charSel.innerHTML = charHtml;
-  if (attrSel.innerHTML !== attrHtml) attrSel.innerHTML = attrHtml;
-  charSel.value = diceUI.charId;
-  attrSel.value = diceUI.attr;
-  testSel.value = diceUI.test;
-}
-
-function refreshDiceCharSelect(){
-  if (currentCampaign && currentCampaign.diceSystem === "d20" && !diceUI.rolling) fillD20Selects();
+function shuffleDice(getEl, sides){
+  return new Promise((resolve) => {
+    let n = 0;
+    const t = setInterval(() => {
+      const el = getEl();
+      if (el) el.innerHTML = `<div class="dice-result-card"><div class="dice-big shuffle">${1 + Math.floor(Math.random() * sides)}</div></div>`;
+      playDiceTick();
+      if (++n >= 9) { clearInterval(t); resolve(); }
+    }, 55);
+  });
 }
 
 function renderDicePanel(campaign){
@@ -2232,23 +2241,12 @@ function renderDicePanel(campaign){
   const bar = (t) => `<div class="ht-panel-bar"><div class="terminal-dots"><span></span><span></span><span></span></div><span class="ht-panel-title">${t}</span></div>`;
 
   if (d20) {
-    diceHostEl.innerHTML = `${bar("/dev/dados — d20 + atributos")}
+    diceHostEl.innerHTML = `${bar("/dev/dados — d20")}
       <div class="ht-panel-body">
-        <div class="dice-row"><label class="dice-label">rolando como</label><select class="modal-select" data-dice="char"></select></div>
-        <div class="dice-row"><label class="dice-label">rolar</label><select class="modal-select" data-dice="attr"></select></div>
-        <div class="dice-row"><label class="dice-label">teste</label>
-          <select class="modal-select" data-dice="test">
-            <option value="">sem teste (só o resultado)</option>
-            ${Object.entries(D20_TESTS).map(([k, t]) => `<option value="${k}">${t.label} (de ${t.min} pra cima)</option>`).join("")}
-          </select>
-        </div>
-        <button class="roll-btn dice-roll" data-dice="roll"><span class="roll-btn-text">ROLAR D20</span></button>
+        <p class="mode-intro">Role um <b>d20 puro</b> aqui. Para rolar um <b>atributo</b>, clique nele na <b>sua ficha</b> e escolha o teste (Normal, Difícil ou Arriscado) — a rolagem acontece na hora. O narrador pode rolar pelos atributos de qualquer ficha.</p>
+        <button class="roll-btn dice-roll" data-dice="roll"><span class="roll-btn-text">ROLAR D20 (PURO)</span></button>
         <div class="dice-result" data-dice="result">${diceUI.resultHtml}</div>
       </div>`;
-    fillD20Selects();
-    diceHostEl.querySelector('[data-dice="char"]').addEventListener("change", (ev) => { diceUI.charId = ev.target.value; fillD20Selects(); });
-    diceHostEl.querySelector('[data-dice="attr"]').addEventListener("change", (ev) => { diceUI.attr = ev.target.value; });
-    diceHostEl.querySelector('[data-dice="test"]').addEventListener("change", (ev) => { diceUI.test = ev.target.value; });
   } else {
     diceHostEl.innerHTML = `${bar("/dev/dados — d6")}
       <div class="ht-panel-body">
@@ -2275,29 +2273,12 @@ async function rollInCampaign(){
   if (!handle || !currentCampaign) return;
 
   const d20 = currentCampaign.diceSystem === "d20";
-  let final;
-  if (d20) {
-    const ch = lastCharacterList.find((c) => c.id === diceUI.charId);
-    const attr = diceUI.attr && ch ? diceUI.attr : null;
-    final = rollD20(attr, attr ? attrValue(ch, attr) : 0, diceUI.test || null);
-    final.charName = ch ? ch.fullName : null;
-  } else {
-    final = { value: 1 + Math.floor(Math.random() * 6), mode: diceUI.mode };
-  }
+  const final = d20 ? rollD20(null, 0, null) : { value: 1 + Math.floor(Math.random() * 6), mode: diceUI.mode };
 
   diceUI.rolling = true;
   const rollBtn = diceHostEl.querySelector('[data-dice="roll"]');
   if (rollBtn) rollBtn.disabled = true;
-  const sides = d20 ? 20 : 6;
-  await new Promise((resolve) => {
-    let n = 0;
-    const t = setInterval(() => {
-      const el = diceHostEl.querySelector('[data-dice="result"]');
-      if (el) el.innerHTML = `<div class="dice-result-card"><div class="dice-big shuffle">${1 + Math.floor(Math.random() * sides)}</div></div>`;
-      playDiceTick();
-      if (++n >= 9) { clearInterval(t); resolve(); }
-    }, 55);
-  });
+  await shuffleDice(() => diceHostEl.querySelector('[data-dice="result"]'), d20 ? 20 : 6);
   diceUI.rolling = false;
 
   diceUI.resultHtml = d20 ? d20ResultHtml(final) : d6ResultHtml(final);
@@ -2308,13 +2289,40 @@ async function rollInCampaign(){
 
   const who = `<b>${escapeHtml(handle)}</b>`;
   if (d20) {
-    logEvent("🎲", `${who}${final.charName ? ` (<b>${escapeHtml(final.charName)}</b>)` : ""} rolou ${escapeHtml(d20Message(final))}.`);
+    logEvent("🎲", `${who} rolou ${escapeHtml(d20Message(final))}.`);
   } else {
     const table = DICE_TABLES[final.mode] || DICE_TABLES[DEFAULT_MODE];
     const entry = table.entries[final.value];
     if (entry.emoji === "🔴") playDeathAlert();
     logEvent("🎲", `${who} rolou <b>${final.value}</b> (${escapeHtml(table.label)}) — ${entry.emoji} ${escapeHtml(entry.title)}.`);
   }
+}
+
+// rolagem de atributo clicando na ficha (só o dono da ficha ou o narrador)
+async function rollAttributeFromSheet(character, attrKey, testKey, cardEl){
+  if (!currentCampaign || currentCampaign.diceSystem !== "d20" || !attrKey || diceUI.rolling) return;
+  const narrator = isCurrentUserCampaignCreator(currentCampaign);
+  if (!(narrator || isMineForNotify(character))) return;
+  const handle = await ensureHandle();
+  if (!handle) return;
+
+  const fresh = lastCharacterList.find((c) => c.id === character.id) || character;
+  const final = rollD20(attrKey, attrValue(fresh, attrKey), testKey);
+
+  attrMenu = null;
+  if (cardEl) { const m = cardEl.querySelector(".attr-roll-menu"); if (m) m.remove(); }
+  diceUI.rolling = true;
+  const sel = `.attr-roll-result[data-char-id="${CSS.escape(character.id)}"]`;
+  await shuffleDice(() => document.querySelector(sel), 20);
+  diceUI.rolling = false;
+
+  const html = d20ResultHtml(final);
+  attrRollResults.set(character.id, html);
+  diceUI.resultHtml = html;
+  applyCharacterFilter();
+  const panelEl = diceHostEl.querySelector('[data-dice="result"]');
+  if (panelEl) panelEl.innerHTML = html;
+  logEvent("🎲", `<b>${escapeHtml(handle)}</b> (<b>${escapeHtml(fresh.fullName)}</b>) rolou ${escapeHtml(d20Message(final))}.`);
 }
 
 // ---------- sangramento: aplica os "ticks" de 5% a cada 10 min ----------

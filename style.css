@@ -2184,6 +2184,29 @@ body{
   .attr-row{ flex-wrap:wrap; }
 }
 
+
+/* painel de regras recolhível + atributos clicáveis na ficha */
+.rules-bar{ cursor:pointer; user-select:none; }
+.rules-bar:focus-visible{ outline:1px solid var(--red); outline-offset:-1px; }
+.rules-summary{ font-size:10.5px; color:var(--mute); letter-spacing:0.03em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:55%; }
+.rules-chevron{ color:var(--mute); transition:transform .2s; flex:0 0 auto; }
+.ht-panel.collapsed .rules-chevron{ transform:rotate(-90deg); }
+.ht-panel.collapsed .ht-panel-body{ display:none; }
+.ht-panel.collapsed .ht-panel-bar{ border-bottom:none; }
+
+button.attr-chip{ font-family:var(--mono); cursor:pointer; }
+.attr-chip.clickable{ border-color:var(--red-deep); color:var(--off); transition:background .15s, border-color .15s; }
+.attr-chip.clickable:hover, .attr-chip.clickable.active{ border-color:var(--red); background:rgba(216,30,30,0.14); }
+
+.attr-roll-menu{
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  border:1px solid var(--red-deep); background:var(--black);
+  padding:8px 10px; font-size:11.5px; color:var(--off);
+}
+.attr-roll-menu .btn-mini{ border-color:var(--red-deep); color:var(--red-bright); }
+.attr-roll-menu .btn-mini:hover{ background:var(--red); color:var(--black); }
+.attr-roll-result:empty{ display:none; }
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
 }

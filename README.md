@@ -150,7 +150,7 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 
 **Inventário**: cada ficha tem uma lista de itens (nome, descrição, quantidade e categoria — 🍗 alimento, 🥤 bebida, 🗡️ arma, 🎒 equipamento ou 💉 cura). Só o narrador pode adicionar itens, aumentar/diminuir a quantidade ou excluir um item. Tanto o narrador quanto quem criou a ficha podem **transferir** um item (ou parte da quantidade) para outra ficha da mesma campanha — como se um personagem entregasse o item a outro. Se a ficha de destino já tiver um item com o mesmo nome e categoria, as quantidades somam em vez de duplicar a entrada.
 
-**Sistema de fome e sede (opcional)**: um painel logo acima da lista de personagens permite ao narrador ligar ou desligar esse sistema pra campanha inteira. Quando ativo, cada ficha ganha duas barras de 3 unidades — 🍗 fome e 💧 sede:
+**Sistema de fome e sede (opcional)**: o narrador liga ou desliga esse sistema pra campanha inteira no painel de regras (`/etc/regras.cfg`). Quando ativo, cada ficha ganha duas barras de 3 unidades — 🍗 fome e 💧 sede:
 - O narrador pode ajustar cada uma manualmente, ficha por ficha (+/-).
 - O narrador também tem dois botões de ação em massa que diminuem 1 de fome ou 1 de sede de **todas as fichas da campanha de uma vez** — útil pra marcar a passagem de um dia, por exemplo.
 - Itens de alimento e bebida no inventário ganham um botão **"consumir"** (disponível pro narrador ou pra quem criou a ficha): consumir um alimento dá +1 de fome, consumir uma bebida dá +1 de sede, e reduz a quantidade do item em 1 (removendo-o se chegar a zero).
@@ -159,13 +159,13 @@ Só quem criou a campanha pode aumentar ou diminuir a barra de dano de qualquer 
 
 **Histórico de eventos**: cada campanha tem um mini-log próprio, separado do terminal de dados, registrando o que acontece com as fichas ao longo do tempo — mudanças de dano (quem aplicou, quanto e o novo total), uso/adição/remoção de itens do inventário, edições de ferimentos, criação e edição de fichas, e a morte de um personagem ao atingir 100% de dano. Fica visível para todos que entram na campanha, mais recente primeiro.
 
-**Regras opcionais da campanha** (painel `/etc/regras.cfg`, só o narrador liga/desliga):
+**Regras opcionais da campanha** (painel `/etc/regras.cfg`, que o narrador usa para ligar/desligar e que pode ser recolhido para ocupar menos espaço):
 
 - 🎲 **Sistema de dados por campanha**: a rolagem acontece somente dentro de cada campanha (painel `/dev/dados`) e o resultado vai pro histórico dela. O narrador escolhe entre **D6** (com as 3 variações de tabela) e **D20 + atributos**.
-- **D20 + atributos**: ao criar uma ficha numa campanha D20, a pessoa distribui exatamente **10 pontos** entre Força, Agilidade, Vigor, Carisma e Intelecto (máx. 5 em cada) — depois de criada, não dá mais pra alterar. Dá pra rolar um **d20 puro** ou um **atributo** (1d20 + valor), e o site mostra o total e a conta separada. Testes: **Normal** (10+), **Difícil** (15+) e **Arriscado** (18+), com sucesso/falha automáticos. Cada ponto de **Vigor** soma +5 ao limite de dano (Vigor 2 = morre em 110%) e desloca na mesma medida os limites entre os estados do corpo.
+- **D20 + atributos**: ao criar uma ficha numa campanha D20, a pessoa distribui exatamente **10 pontos** entre Força, Agilidade, Vigor, Carisma e Intelecto (máx. 5 em cada) — depois de criada, não dá mais pra alterar. No painel de dados dá pra rolar um **d20 puro**; pra rolar um **atributo**, o dono da ficha clica no atributo na própria ficha e escolhe o teste (Normal, Difícil ou Arriscado) — a rolagem é automática e o site mostra o total e a conta separada. Todo mundo vê os atributos das fichas da campanha, mas só o dono (ou o narrador, em qualquer ficha) pode rolá-los. Testes: **Normal** (10+), **Difícil** (15+) e **Arriscado** (18+), com sucesso/falha automáticos. Cada ponto de **Vigor** soma +5 ao limite de dano (Vigor 2 = morre em 110%) e desloca na mesma medida os limites entre os estados do corpo.
 - 🌀 **Sanidade**: barra de 0 a 100% ajustada pelo narrador; ao chegar em 100% a ficha fica **insana** (perde o juízo, não luta direito, pode ferir colegas e chama atenção) e ganha um visual próprio.
 - 🩸 **Sangramento**: liga os estados do corpo ao dano — **Normal** (até 50%), **Mancando** (51–80%) e **No Chão** (81–99%) — e permite ao narrador marcar uma ficha como **Sangrando**: 5% de dano a cada 10 minutos durante 1 hora (30% no total). O desconto é aplicado automaticamente (pelo navegador do narrador ou do dono da ficha que estiver com a campanha aberta; o que passou enquanto ninguém estava online é compensado na próxima abertura). Itens de **cura** e a **Erva Vermelha** encerram o sangramento, e o narrador também pode parar manualmente.
-- 🌿 **Ervas** (exigem sanidade ou sangramento ativos): novas categorias de item — 🌿 **Verde** (restaura vida, usa a mesma % da cura da campanha, mas não para o sangramento), 🌺 **Vermelha** (para o sangramento) e 🫐 **Azul** (restaura 20% de sanidade). O botão **🧪 misturar ervas** (narrador ou dono da ficha) gasta uma erva de cada cor e aplica os dois efeitos juntos: Verde+Vermelha, Verde+Azul ou Vermelha+Azul (esta última sem restaurar vida).
+- 🌿 **Ervas** (exigem sanidade ou sangramento ativos): itens prontos (ao adicionar um item, escolha o **item pronto** e nome e descrição curta já vêm preenchidos) — 🌿 **Verde** (restaura vida, usa a mesma % da cura da campanha, mas não para o sangramento), 🌺 **Vermelha** (para o sangramento) e 🫐 **Azul** (restaura 20% de sanidade). O botão **🧪 misturar ervas** (narrador ou dono da ficha) gasta uma erva de cada cor e aplica os dois efeitos juntos: Verde+Vermelha, Verde+Azul ou Vermelha+Azul (esta última sem restaurar vida).
 
 Nenhuma regra nova do Firestore é necessária: tudo reaproveita os documentos de campanha, ficha e histórico que já existem.
 
@@ -238,6 +238,6 @@ Sem Firebase configurado, login, campanhas e personagens funcionam em modo local
 
 ## Como funciona a rolagem
 
-- Entre numa campanha e use o painel `/dev/dados`: no D6, escolha a tabela e clique em **ROLAR D6**; no D20, escolha a ficha, o atributo e o tipo de teste e clique em **ROLAR D20**.
+- Entre numa campanha e use o painel `/dev/dados`: no D6, escolha a tabela e clique em **ROLAR D6**; no D20, clique em **ROLAR D20 (PURO)** ou clique num atributo da sua ficha e escolha o teste.
 - O resultado aparece no painel e é registrado no histórico da campanha, com o nome de quem rolou.
 - A rolagem exige estar logado; só o narrador pode escolher o sistema de dados da campanha (D6 ou D20).

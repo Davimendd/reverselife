@@ -184,6 +184,11 @@
       <button class="modal-close" id="itemModalClose" aria-label="Fechar">✕</button>
     </div>
     <div class="modal-body">
+      <div id="itemPresetBlock" hidden>
+        <label class="modal-label" for="itemPreset">item pronto</label>
+        <select id="itemPreset" class="modal-select"></select>
+      </div>
+
       <label class="modal-label" for="itemName">nome do item</label>
       <div class="modal-input-row">
         <span class="prompt">&gt;</span>
@@ -193,6 +198,7 @@
       <label class="modal-label" for="itemDescription">descrição</label>
       <textarea id="itemDescription" class="modal-textarea" maxlength="300" placeholder="detalhes sobre o item..."></textarea>
 
+      <div id="itemCategoryBlock">
       <label class="modal-label" for="itemCategory">categoria</label>
       <select id="itemCategory" class="modal-select">
         <option value="alimento">🍗 Alimento</option>
@@ -201,6 +207,7 @@
         <option value="equipamento">🎒 Equipamento</option>
         <option value="cura">💉 Cura</option>
       </select>
+      </div>
 
       <label class="modal-label" for="itemQuantity">quantidade</label>
       <div class="modal-input-row">
@@ -320,7 +327,6 @@
 
       <div class="ht-panel" id="rulesPanel" hidden></div>
       <div class="ht-panel" id="campDice" hidden></div>
-      <div class="ht-panel" id="htPanel" hidden></div>
 
       <div class="panel-label campaigns-head">
         <span>04</span>
