@@ -3,7 +3,7 @@ import { getCurrentHandle, getCurrentUid, ensureHandle } from "./identity.js";
 import {
   ATTRS, ATTR_POINTS_TOTAL, ATTR_MAX, attrValue, validateAttrs, maxDamageOf, bodyState,
   bleedProgress, computeBleedTicks, BLEED_TICKS, D20_TESTS, rollD20, d20Message,
-  HERBS, herbEffect, herbEffectText, INSANE_DESC
+  HERBS, herbEffect, herbEffectText, INSANE_DESC, carryCapacity, itemsCarried
 } from "./rules.js";
 import { DICE_TABLES, DEFAULT_MODE } from "./dice-data.js";
 import { playDiceTick, playDeathAlert } from "./sound.js";
@@ -47,6 +47,18 @@ const mixHerbB = document.getElementById("mixHerbB");
 const mixEffect = document.getElementById("mixEffect");
 const mixError = document.getElementById("mixError");
 const mixSubmit = document.getElementById("mixSubmit");
+const sanityTestBtn = document.getElementById("sanityTestBtn");
+const sanityModal = document.getElementById("sanityModal");
+const sanityModalClose = document.getElementById("sanityModalClose");
+const sanityIntro = document.getElementById("sanityIntro");
+const sanityDifficulty = document.getElementById("sanityDifficulty");
+const sanityDamage = document.getElementById("sanityDamage");
+const sanityList = document.getElementById("sanityList");
+const sanityError = document.getElementById("sanityError");
+const sanitySubmit = document.getElementById("sanitySubmit");
+const sanityResults = document.getElementById("sanityResults");
+const sanityPickAll = document.getElementById("sanityPickAll");
+const sanityPickNone = document.getElementById("sanityPickNone");
 const characterGrid = document.getElementById("characterGrid");
 const characterEmpty = document.getElementById("characterEmpty");
 const characterSearch = document.getElementById("characterSearch");
@@ -170,13 +182,14 @@ const campaignsAPI = {
 // lógica pura de transferência de item — usada tanto pelo
 // backend Firebase (dentro de uma transação) quanto pelo local
 // ------------------------------------------------------------
-function computeTransfer(fromItems, toItems, itemId, quantity){
+function computeTransfer(fromItems, toItems, itemId, quantity, toCapacity = null){
   const fromList = [...fromItems];
   const idx = fromList.findIndex((it) => it.id === itemId);
   if (idx === -1) return null;
 
   const item = fromList[idx];
   const qty = Math.max(1, Math.min(quantity, item.quantity));
+  if (toCapacity !== null && itemsCarried(toItems) + qty > toCapacity) return { full: true };
 
   if (qty >= item.quantity) {
     fromList.splice(idx, 1);
@@ -284,7 +297,7 @@ async function initFirebaseBackend(){
     });
   };
 
-  campaignsAPI.transferItem = async (campaignId, fromCharacterId, toCharacterId, itemId, quantity) => {
+  campaignsAPI.transferItem = async (campaignId, fromCharacterId, toCharacterId, itemId, quantity, limitsOn = false) => {
     const fromRef = doc(db, "campaigns", campaignId, "characters", fromCharacterId);
     const toRef = doc(db, "campaigns", campaignId, "characters", toCharacterId);
 
@@ -295,8 +308,9 @@ async function initFirebaseBackend(){
 
       const fromData = fromSnap.data();
       const toData = toSnap.data();
-      const result = computeTransfer(fromData.items || [], toData.items || [], itemId, quantity);
+      const result = computeTransfer(fromData.items || [], toData.items || [], itemId, quantity, limitsOn ? carryCapacity(toData) : null);
       if (!result) throw new Error("ITEM_NOT_FOUND");
+      if (result.full) throw new Error("INVENTORY_FULL");
 
       tx.update(fromRef, { items: result.fromItems });
       tx.update(toRef, { items: result.toItems });
@@ -467,14 +481,15 @@ function initLocalBackend(){
     };
   };
 
-  campaignsAPI.transferItem = async (campaignId, fromCharacterId, toCharacterId, itemId, quantity) => {
+  campaignsAPI.transferItem = async (campaignId, fromCharacterId, toCharacterId, itemId, quantity, limitsOn = false) => {
     const list = readCharacters(campaignId);
     const fromIdx = list.findIndex((c) => c.id === fromCharacterId);
     const toIdx = list.findIndex((c) => c.id === toCharacterId);
     if (fromIdx === -1 || toIdx === -1) throw new Error("CHARACTER_NOT_FOUND");
 
-    const result = computeTransfer(list[fromIdx].items || [], list[toIdx].items || [], itemId, quantity);
+    const result = computeTransfer(list[fromIdx].items || [], list[toIdx].items || [], itemId, quantity, limitsOn ? carryCapacity(list[toIdx]) : null);
     if (!result) throw new Error("ITEM_NOT_FOUND");
+    if (result.full) throw new Error("INVENTORY_FULL");
 
     list[fromIdx] = { ...list[fromIdx], items: result.fromItems };
     list[toIdx] = { ...list[toIdx], items: result.toItems };
@@ -556,6 +571,7 @@ function escapeHtml(str){
 }
 
 function describeError(err, fallback){
+  if (err && err.message === "INVENTORY_FULL") return "o inventário não tem espaço suficiente (o limite de itens depende da Força).";
   const code = err && err.code;
   if (code === "permission-denied") {
     return "acesso negado pelo Firestore — confira se as regras foram atualizadas (ver README) e se você está logado.";
@@ -809,6 +825,7 @@ function renderCampaignCard(campaign){
           renderCampaignHeader(updated);
           renderCureConfig(updated);
           renderRulesPanel(updated);
+          refreshSanityTestBtn(updated);
           renderDicePanel(updated);
           applyCharacterFilter();
         }
@@ -999,6 +1016,7 @@ function openCampaign(campaign){
   attrRollResults.clear();
   attrMenu = null;
   renderRulesPanel(campaign);
+  refreshSanityTestBtn(campaign);
   renderDicePanel(campaign);
   startBleedTimer();
   campaignListView.hidden = true;
@@ -1048,6 +1066,7 @@ backToCampaignsBtn.addEventListener("click", () => {
   previousCharacterStates = new Map();
   cureConfigEl.hidden = true;
   cureConfigEl.innerHTML = "";
+  sanityTestBtn.hidden = true;
   rulesPanelEl.hidden = true;
   rulesPanelEl.innerHTML = "";
   diceHostEl.hidden = true;
@@ -1251,6 +1270,15 @@ itemSubmit.addEventListener("click", async () => {
     itemError.textContent = "backend ainda não carregou, tente novamente em instantes.";
     return;
   }
+  if (currentCampaign.diceSystem === "d20") {
+    const freshChar = lastCharacterList.find((c) => c.id === itemModalCharacter.id) || itemModalCharacter;
+    const capNow = carryCapacity(freshChar);
+    const usedNow = itemsCarried(freshChar.items);
+    if (usedNow + quantity > capNow) {
+      itemError.textContent = `capacidade excedida: a ficha carrega ${usedNow}/${capNow} itens (Força ${attrValue(freshChar, "forca")}) — cabem mais ${Math.max(0, capNow - usedNow)}.`;
+      return;
+    }
+  }
 
   const newItem = {
     id: `i_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -1332,12 +1360,20 @@ transferSubmit.addEventListener("click", async () => {
   }
 
   const targetCharacter = lastCharacterList.find((c) => c.id === targetId);
+  const limitsOnTransfer = currentCampaign.diceSystem === "d20";
+  if (limitsOnTransfer && targetCharacter) {
+    const free = carryCapacity(targetCharacter) - itemsCarried(targetCharacter.items);
+    if (quantity > free) {
+      transferError.textContent = `a ficha de destino só tem espaço para mais ${Math.max(0, free)} item(ns) (limite pela Força).`;
+      return;
+    }
+  }
 
   transferSubmit.disabled = true;
   transferError.textContent = "enviando item...";
 
   try {
-    await campaignsAPI.transferItem(currentCampaign.id, character.id, targetId, item.id, quantity);
+    await campaignsAPI.transferItem(currentCampaign.id, character.id, targetId, item.id, quantity, limitsOnTransfer);
     logEvent("🔁", `<b>${escapeHtml(getCurrentHandle())}</b> enviou <b>${escapeHtml(item.name)}</b> (x${quantity}) de <b>${escapeHtml(character.fullName)}</b> para <b>${escapeHtml(targetCharacter ? targetCharacter.fullName : "?")}</b>.`);
     transferSubmit.disabled = false;
     closeTransferModal();
@@ -1437,6 +1473,10 @@ function renderCharacterCard(character){
   const canRollAttrs = isCampaignCreator || isCharCreator; // só o dono da ficha (ou o narrador) rola
   const menuAttr = (attrMenu && attrMenu.charId === character.id && canRollAttrs && d20On) ? attrMenu.attr : null;
   const menuInfo = menuAttr ? ATTRS.find((a) => a.key === menuAttr) : null;
+  const limitsOn = d20On; // limite de carga só existe em campanhas D20
+  const cap = carryCapacity(character);
+  const carried = itemsCarried(character.items);
+  const disadv = disadvantageFor(character); // Mancando / No Chão: todos os testes com desvantagem
   const hunger = character.hunger ?? 3;
   const thirst = character.thirst ?? 3;
   const isExpanded = expandedCharacterIds.has(character.id);
@@ -1459,6 +1499,7 @@ function renderCharacterCard(character){
           <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
           <span class="damage-status-pill ${status.cls}">${status.label} · ${damage}%${maxDmg !== 100 ? ` / ${maxDmg}%` : ""}</span>
           ${bleedingOn && !dead ? `<span class="state-pill state-${bodySt.key}">${bodySt.icon} ${bodySt.label}</span>` : ""}
+          ${disadv && !dead ? `<span class="state-pill state-disadv" title="testes com desvantagem até se curar">⚠️ desvantagem</span>` : ""}
           ${bleedNow ? `<span class="state-pill state-bleeding">🩸 sangrando</span>` : ""}
           ${insane && !dead ? `<span class="state-pill state-insane">🌀 insano</span>` : ""}
         </div>
@@ -1487,13 +1528,14 @@ function renderCharacterCard(character){
             <div class="attr-chips">${ATTRS.map((a) => (canRollAttrs && d20On)
               ? `<button type="button" class="attr-chip clickable ${menuAttr === a.key ? "active" : ""}" data-action="attr-roll" data-attr="${a.key}" title="${escapeHtml(a.desc)} — clique para rolar">${a.icon} ${a.label} <b>${attrValue(character, a.key)}</b></button>`
               : `<span class="attr-chip" title="${escapeHtml(a.desc)}">${a.icon} ${a.label} <b>${attrValue(character, a.key)}</b></span>`).join("")}</div>
-            ${menuInfo ? `<div class="attr-roll-menu"><span>🎲 rolar <b>${menuInfo.label}</b> (+${attrValue(character, menuInfo.key)}):</span>${Object.entries(D20_TESTS).map(([k, t]) => `<button type="button" class="btn-mini" data-action="attr-test" data-test="${k}">${t.label} (${t.min}+)</button>`).join("")}<button type="button" class="btn-mini" data-action="attr-cancel">cancelar</button></div>` : ""}
+            ${menuInfo ? `<div class="attr-roll-menu"><span>🎲 rolar <b>${menuInfo.label}</b> (+${attrValue(character, menuInfo.key)}):</span>${Object.entries(D20_TESTS).map(([k, t]) => `<button type="button" class="btn-mini" data-action="attr-test" data-test="${k}">${t.label} (${t.min}+)</button>`).join("")}<button type="button" class="btn-mini" data-action="attr-cancel">cancelar</button>${disadv ? `<span class="attr-roll-warn">⚠️ ${disadv}: este teste será rolado com <b>desvantagem</b> (2d20, vale o menor). Cure-se para voltar ao estado Normal.</span>` : ""}</div>` : ""}
             <div class="attr-roll-result" data-char-id="${character.id}">${attrRollResults.get(character.id) || ""}</div>
           ` : ""}
           ${bleedingOn ? `
             <div class="body-state state-${bodySt.key}">
               <span class="body-state-name">${bodySt.icon} <b>${bodySt.label}</b></span>
               <span class="body-state-desc">${escapeHtml(bodySt.desc)}</span>
+              ${disadv ? `<span class="body-state-warn">⚠️ Todos os testes desta ficha são rolados com <b>desvantagem</b> (2d20, vale o menor) até ela se curar e voltar ao estado Normal.</span>` : ""}
             </div>
             ${bleedNow ? `
               <div class="bleed-row">
@@ -1575,7 +1617,7 @@ function renderCharacterCard(character){
 
       <div class="inventory-box">
         <div class="inventory-head">
-          <span class="injuries-label">inventário</span>
+          <span class="injuries-label">inventário${limitsOn ? ` <span class="cap-count ${carried >= cap ? "full" : ""}" title="limite: 5 itens + 2 por ponto de Força">🎒 ${carried}/${cap}</span>` : ""}</span>
           <span class="inventory-head-actions">
             ${(herbsOn && canTransferItems) ? `<button class="btn-mini" data-action="mix-herbs">🧪 misturar ervas</button>` : ""}
             ${canManageItems ? `<button class="btn-mini" data-action="add-item">+ item</button>` : ""}
@@ -1693,6 +1735,7 @@ function renderCharacterCard(character){
         const idx = items.findIndex((it) => it.id === itemId);
         if (idx === -1) return;
         const delta = btn.dataset.action === "item-inc" ? 1 : -1;
+        if (delta > 0 && limitsOn && carried >= cap) { showCardError(new Error("INVENTORY_FULL"), "inventário cheio."); return; }
         const item = items[idx];
         const newQty = item.quantity + delta;
 
@@ -2307,7 +2350,7 @@ async function rollAttributeFromSheet(character, attrKey, testKey, cardEl){
   if (!handle) return;
 
   const fresh = lastCharacterList.find((c) => c.id === character.id) || character;
-  const final = rollD20(attrKey, attrValue(fresh, attrKey), testKey);
+  const final = rollD20(attrKey, attrValue(fresh, attrKey), testKey, Math.random, disadvantageFor(fresh));
 
   attrMenu = null;
   if (cardEl) { const m = cardEl.querySelector(".attr-roll-menu"); if (m) m.remove(); }
@@ -2369,4 +2412,93 @@ async function checkBleedingTicks(){
       bleedInFlight.delete(c.id);
     }
   }
+}
+
+
+// ============================================================
+// TESTE DE SANIDADE (narrador): teste de Carisma em várias fichas de uma vez
+// ============================================================
+function refreshSanityTestBtn(campaign){
+  sanityTestBtn.hidden = !(campaign && campaign.sanityEnabled && isCurrentUserCampaignCreator(campaign));
+}
+
+function openSanityTest(){
+  if (!currentCampaign) return;
+  const d20 = currentCampaign.diceSystem === "d20";
+  sanityResults.innerHTML = "";
+  sanityError.textContent = "";
+  sanitySubmit.disabled = false;
+  sanityIntro.textContent = d20
+    ? "Cada ficha escolhida rola 1d20 + Carisma contra a dificuldade. Quem falhar sofre o abalo mental definido abaixo."
+    : "Esta campanha usa D6 (sem atributos): cada ficha escolhida rola 1d20 puro contra a dificuldade. Quem falhar sofre o abalo mental definido abaixo.";
+  sanityList.innerHTML = lastCharacterList.map((c) => {
+    const dead = (c.damage || 0) >= maxDamageOf(c);
+    return `<label class="sanity-pick ${dead ? "dead" : ""}">
+      <input type="checkbox" data-pick="${c.id}" ${dead ? "disabled" : "checked"}>
+      <span class="sanity-pick-name">${escapeHtml(c.fullName)}${dead ? " ☠️" : ""}</span>
+      <span class="sanity-pick-meta">${disadvantageFor(c) ? "⚠️ desvantagem · " : ""}${d20 ? `Carisma ${attrValue(c, "carisma")} · ` : ""}sanidade ${Math.round(c.sanity || 0)}%</span>
+    </label>`;
+  }).join("") || `<p class="modal-rules">nenhuma ficha nesta campanha.</p>`;
+  sanityModal.classList.remove("hidden");
+}
+function closeSanityTest(){ sanityModal.classList.add("hidden"); }
+
+sanityTestBtn.addEventListener("click", openSanityTest);
+sanityModalClose.addEventListener("click", closeSanityTest);
+sanityPickAll.addEventListener("click", () => sanityList.querySelectorAll("[data-pick]:not(:disabled)").forEach((i) => { i.checked = true; }));
+sanityPickNone.addEventListener("click", () => sanityList.querySelectorAll("[data-pick]").forEach((i) => { i.checked = false; }));
+
+sanitySubmit.addEventListener("click", async () => {
+  if (!currentCampaign || !campaignsAPI.bulkPatchCharacters) return;
+  const dmg = parseInt(sanityDamage.value, 10);
+  if (!Number.isFinite(dmg) || dmg < 1 || dmg > 100) { sanityError.textContent = "informe um abalo mental entre 1 e 100%."; return; }
+  const picked = [...sanityList.querySelectorAll("[data-pick]:checked")].map((i) => i.dataset.pick);
+  if (!picked.length) { sanityError.textContent = "escolha pelo menos uma ficha."; return; }
+  sanityError.textContent = "";
+
+  const testKey = sanityDifficulty.value;
+  const d20 = currentCampaign.diceSystem === "d20";
+  const results = picked.map((id) => lastCharacterList.find((c) => c.id === id)).filter(Boolean).map((c) => {
+    const r = rollD20(d20 ? "carisma" : null, d20 ? attrValue(c, "carisma") : 0, testKey, Math.random, disadvantageFor(c));
+    const before = Math.max(0, Math.min(100, Math.round(c.sanity || 0)));
+    const after = r.success ? before : Math.min(100, before + dmg);
+    return { c, r, before, after };
+  });
+  const failed = results.filter((x) => !x.r.success);
+  const updates = failed.filter((x) => x.after !== x.before).map((x) => ({ characterId: x.c.id, patch: { sanity: x.after } }));
+
+  sanitySubmit.disabled = true;
+  try {
+    if (updates.length) await campaignsAPI.bulkPatchCharacters(currentCampaign.id, updates);
+  } catch (err) {
+    console.error("Falha ao aplicar o teste de sanidade:", err);
+    sanityError.textContent = describeError(err, "erro ao aplicar o abalo mental.");
+    sanitySubmit.disabled = false;
+    return;
+  }
+
+  const label = D20_TESTS[testKey].label;
+  sanityResults.innerHTML = `
+    <p class="sanity-summary">${failed.length ? `✖ falharam: <b>${failed.map((x) => escapeHtml(x.c.fullName)).join(", ")}</b> (+${dmg}% de abalo mental)` : "✔ todos passaram no teste."}</p>
+    ${results.map((x) => `
+      <div class="sanity-result ${x.r.success ? "ok" : "fail"}">
+        <span class="sanity-result-name">${x.r.success ? "✔" : "✖"} ${escapeHtml(x.c.fullName)}</span>
+        <span class="sanity-result-calc">${escapeHtml(d20Message(x.r))}</span>
+        <span class="sanity-result-effect">${x.r.success ? "sem abalo" : `sanidade ${x.before}% → ${x.after}%${x.after >= 100 && x.before < 100 ? " · INSANO 🌀" : ""}`}</span>
+      </div>`).join("")}`;
+
+  const who = escapeHtml(getCurrentHandle());
+  logEvent("🌀", `<b>${who}</b> pediu um teste de ${d20 ? "Carisma" : "sanidade"} (${label}, ≥${D20_TESTS[testKey].min}) a ${results.length} ficha${results.length === 1 ? "" : "s"}: ${results.map((x) => `${escapeHtml(x.c.fullName)} ${x.r.total}${x.r.success ? "✔" : "✖"}`).join(" · ")}.`);
+  if (failed.length) logEvent("🌀", `Falharam: <b>${failed.map((x) => escapeHtml(x.c.fullName)).join(", ")}</b> — +${dmg}% de abalo mental.`);
+  failed.forEach((x) => { if (x.after >= 100 && x.before < 100) logEvent("🌀", `<b>${escapeHtml(x.c.fullName)}</b> perdeu o juízo e ficou <b>INSANO</b>.`); });
+});
+
+
+// Mancando ou No Chão (sistema de sangramento ativo): todos os testes da ficha saem com
+// desvantagem (2d20, vale o menor) até ela voltar ao estado Normal. Devolve o nome do
+// estado (motivo) ou false.
+function disadvantageFor(character){
+  if (!currentCampaign || !currentCampaign.bleedingEnabled) return false;
+  const st = bodyState(Math.round(character.damage || 0), character);
+  return (st.key === "mancando" || st.key === "chao") ? st.label : false;
 }

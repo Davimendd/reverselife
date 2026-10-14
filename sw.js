@@ -7,11 +7,11 @@
 // rolagens em tempo real ou dados das campanhas.
 //
 // Ao publicar uma nova versão do site, aumente o número em
-// CACHE_NAME (ex: "reverse-life-v8") pra forçar os navegadores
+// CACHE_NAME (ex: "reverse-life-v10") pra forçar os navegadores
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v8";
+const CACHE_NAME = "reverse-life-v10";
 
 const APP_SHELL = [
   "./",
@@ -34,7 +34,7 @@ const APP_SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then((cache) => cache.addAll(APP_SHELL.map((u) => new Request(u, { cache: "reload" }))))
       .catch((err) => console.error("Falha ao pré-cachear o app shell:", err))
   );
   self.skipWaiting();
@@ -58,22 +58,23 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // REDE PRIMEIRO: sempre busca a versão mais nova (sem usar o cache HTTP do
+  // navegador) e guarda uma cópia. O cache só é usado quando está offline.
+  // Isso evita misturar arquivos antigos e novos depois de uma atualização.
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const networkFetch = fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-          }
-          return response;
-        })
-        .catch(() => cached);
-
-      // serve do cache na hora (se existir) e atualiza em segundo plano;
-      // sem cache, espera a rede
-      return cached || networkFetch;
-    })
+    fetch(event.request, { cache: "no-cache" })
+      .then((response) => {
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() =>
+        caches.match(event.request).then((cached) =>
+          cached || (event.request.mode === "navigate" ? caches.match("./index.html") : Response.error())
+        )
+      )
   );
 });
 

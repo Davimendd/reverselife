@@ -278,6 +278,43 @@
   </div>
 </div>
 
+<!-- ===================== modal: teste de sanidade ===================== -->
+<div class="modal-overlay hidden" id="sanityModal">
+  <div class="modal-card">
+    <div class="terminal-bar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">/bin/teste_sanidade</span>
+      <button class="modal-close" id="sanityModalClose" aria-label="Fechar">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-line" id="sanityIntro"></p>
+
+      <label class="modal-label" for="sanityDifficulty">dificuldade do teste</label>
+      <select id="sanityDifficulty" class="modal-select">
+        <option value="normal">Normal (10 pra cima)</option>
+        <option value="dificil">Difícil (15 pra cima)</option>
+        <option value="arriscado">Arriscado (18 pra cima)</option>
+      </select>
+
+      <label class="modal-label" for="sanityDamage">abalo mental de quem falhar (%)</label>
+      <div class="modal-input-row">
+        <span class="prompt">&gt;</span>
+        <input type="number" id="sanityDamage" class="modal-input" min="1" max="100" value="10">
+      </div>
+
+      <label class="modal-label">fichas que farão o teste
+        <button type="button" class="link-btn" id="sanityPickAll">todas</button> /
+        <button type="button" class="link-btn" id="sanityPickNone">nenhuma</button>
+      </label>
+      <div class="sanity-list" id="sanityList"></div>
+
+      <p class="modal-error" id="sanityError"></p>
+      <button class="roll-btn" id="sanitySubmit"><span class="roll-btn-text">ROLAR TESTE</span></button>
+      <div class="sanity-results" id="sanityResults"></div>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
 
   <header class="top">
@@ -348,6 +385,7 @@
       <div class="panel-label campaigns-head">
         <span>05</span>
         <h2>personagens</h2>
+        <button class="roll-btn small-btn" id="sanityTestBtn" hidden><span class="roll-btn-text">🌀 TESTE DE SANIDADE</span></button>
         <button class="roll-btn small-btn" id="createCharacterBtn">
           <span class="roll-btn-text">+ CRIAR FICHA</span>
         </button>

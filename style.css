@@ -2207,6 +2207,34 @@ button.attr-chip{ font-family:var(--mono); cursor:pointer; }
 .attr-roll-menu .btn-mini:hover{ background:var(--red); color:var(--black); }
 .attr-roll-result:empty{ display:none; }
 
+
+/* carga, combate e teste de sanidade */
+.roll-btn[hidden]{ display:none; }
+.btn-mini.active{ background:var(--red); color:var(--black); border-color:var(--red); }
+.cap-count{ margin-left:6px; font-size:11px; color:var(--mute); letter-spacing:0; text-transform:none; }
+.cap-count.full{ color:var(--red-bright); font-weight:700; }
+
+.sanity-list{ display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; border:1px solid var(--line); background:var(--black); padding:8px; }
+.sanity-pick{ display:flex; align-items:center; gap:8px; font-size:12px; color:var(--off); cursor:pointer; }
+.sanity-pick.dead{ opacity:0.45; cursor:not-allowed; }
+.sanity-pick input{ accent-color:var(--red); }
+.sanity-pick-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sanity-pick-meta{ font-size:10.5px; color:var(--mute); white-space:nowrap; }
+.sanity-results{ margin-top:14px; display:flex; flex-direction:column; gap:6px; }
+.sanity-summary{ margin:0 0 4px; font-size:12.5px; color:var(--off); }
+.sanity-result{ display:grid; grid-template-columns:1fr; gap:2px; border:1px solid var(--line); border-left:3px solid #4fd67a; background:var(--black); padding:7px 10px; font-size:11.5px; }
+.sanity-result.fail{ border-left-color:var(--red-bright); }
+.sanity-result-name{ color:var(--off); font-weight:700; }
+.sanity-result-calc{ color:var(--mute); }
+.sanity-result-effect{ color:#c58bff; }
+.sanity-result.ok .sanity-result-effect{ color:var(--mute); }
+
+
+/* desvantagem (Mancando / No Chão) */
+.state-pill.state-disadv{ color:#ffb347; animation:critBlink 1.6s ease-in-out infinite; }
+.body-state-warn{ font-size:11px; color:#ffb347; line-height:1.5; margin-top:4px; border-top:1px dashed var(--line); padding-top:5px; }
+.attr-roll-warn{ flex-basis:100%; font-size:11px; color:#ffb347; line-height:1.5; }
+
 @media (prefers-reduced-motion: reduce){
   *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
 }

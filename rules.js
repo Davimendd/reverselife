@@ -88,19 +88,34 @@ export const D20_TESTS = {
 };
 
 // attrKey = null → d20 puro; testKey = null → sem teste (só o resultado)
-export function rollD20(attrKey, attrBonus, testKey, rng = Math.random){
-  const die = 1 + Math.floor(rng() * 20);
+// disadvantage (true ou o motivo, ex.: "Mancando") → rola 2d20 e fica com o menor
+export function rollD20(attrKey, attrBonus, testKey, rng = Math.random, disadvantage = false){
+  const roll = () => 1 + Math.floor(rng() * 20);
+  const rolls = disadvantage ? [roll(), roll()] : [roll()];
+  const die = Math.min(...rolls);
   const bonus = attrKey ? attrBonus : 0;
   const total = die + bonus;
   const test = testKey && D20_TESTS[testKey] ? D20_TESTS[testKey] : null;
-  return { die, bonus, total, attrKey, test, success: test ? total >= test.min : null };
+  return { die, rolls, disadvantage: !!disadvantage, disadvantageReason: typeof disadvantage === "string" ? disadvantage : "", bonus, total, attrKey, test, success: test ? total >= test.min : null };
 }
 
 export function d20Message(r){
   const attr = r.attrKey ? ATTRS.find((a) => a.key === r.attrKey) : null;
-  const calc = attr ? `1d20 (${r.die}) + ${attr.label} (${r.bonus}) = ${r.total}` : `1d20 = ${r.die}`;
-  if (!r.test) return calc;
-  return `${calc} — teste ${r.test.label} (≥${r.test.min}): ${r.success ? "SUCESSO" : "FALHA"}`;
+  const dice = r.disadvantage ? `2d20 (${r.rolls.join(" e ")} → vale o menor: ${r.die})` : `1d20 (${r.die})`;
+  const calc = attr ? `${dice} + ${attr.label} (${r.bonus}) = ${r.total}` : (r.disadvantage ? `${dice} = ${r.total}` : `1d20 = ${r.die}`);
+  const dis = r.disadvantage ? ` — com desvantagem${r.disadvantageReason ? ` (${r.disadvantageReason})` : ""}` : "";
+  if (!r.test) return calc + dis;
+  return `${calc}${dis} — teste ${r.test.label} (≥${r.test.min}): ${r.success ? "SUCESSO" : "FALHA"}`;
+}
+
+// ---------- carga (só em campanhas D20): 5 itens + 2 por ponto de Força ----------
+export const CARRY_BASE = 5;
+export const CARRY_PER_STRENGTH = 2;
+export function carryCapacity(character){
+  return CARRY_BASE + CARRY_PER_STRENGTH * attrValue(character, "forca");
+}
+export function itemsCarried(items){
+  return (items || []).reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
 }
 
 // ---------- ervas ----------
