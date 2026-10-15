@@ -7,6 +7,7 @@ import {
 } from "./rules.js";
 import { DICE_TABLES, DEFAULT_MODE } from "./dice-data.js";
 import { playDiceTick, playDeathAlert } from "./sound.js";
+import { icon, stateIcon } from "./icons.js";
 
 // ------------------------------------------------------------
 // categorias de item de inventário
@@ -553,11 +554,11 @@ function initLocalBackend(){
 // status de dano
 // ------------------------------------------------------------
 function damageStatus(damage){
-  if (damage >= 100) return { label: "morto", cls: "status-morto", color: "#7a0d0d" };
-  if (damage >= 75) return { label: "estado crítico", cls: "status-critico", color: "#ff2e2e" };
-  if (damage >= 50) return { label: "muito ferido", cls: "status-muito-ferido", color: "#ff9a3d" };
-  if (damage >= 25) return { label: "ferido", cls: "status-ferido", color: "#e6d24a" };
-  return { label: "estável", cls: "status-estavel", color: "#4fd67a" };
+  if (damage >= 100) return { label: "morto", cls: "status-morto", color: "var(--red-deep)" };
+  if (damage >= 75) return { label: "estado crítico", cls: "status-critico", color: "var(--red-bright)" };
+  if (damage >= 50) return { label: "muito ferido", cls: "status-muito-ferido", color: "var(--orange)" };
+  if (damage >= 25) return { label: "ferido", cls: "status-ferido", color: "var(--yellow)" };
+  return { label: "estável", cls: "status-estavel", color: "var(--ok)" };
 }
 
 function clampDamage(v, max = 100){
@@ -1434,6 +1435,23 @@ function renderCharacters(list){
   }
 }
 
+// ---------- helpers visuais da ficha ----------
+function sectionTitle(iconName, text, extra){
+  return `<div class="section-title">${icon(iconName)}<span>${text}</span>${extra || ""}</div>`;
+}
+
+function attrPips(value){
+  return `<span class="attr-pips" aria-hidden="true">${Array.from({ length: ATTR_MAX }, (_, i) => `<i class="${i < value ? "on" : ""}"></i>`).join("")}</span>`;
+}
+
+// marcas nas faixas de status (25/50/75%) da barra de dano
+function damageTicks(extra){
+  return `<i class="tick" style="left:25%"></i><i class="tick" style="left:50%"></i><i class="tick" style="left:75%"></i>${extra || ""}`;
+}
+
+// ids de personagens com os controles do narrador abertos — persiste entre re-renders
+const expandedControlIds = new Set();
+
 // ids de personagens com a ficha expandida — persiste entre re-renders
 // (toda mudança de dado/kit/ferimento re-renderiza a lista inteira)
 const expandedCharacterIds = new Set();
@@ -1484,140 +1502,171 @@ function renderCharacterCard(character){
   const card = document.createElement("div");
   card.className = "character-card" + (dead ? " is-dead" : "") + (insane && !dead ? " is-insane" : "");
 
+  const vigor = attrValue(character, "vigor");
+  const attrVals = ATTRS.map((a) => attrValue(character, a.key));
+  const attrTop = Math.max(...attrVals);
+  const attrAllEqual = attrVals.every((v) => v === attrVals[0]);
+  const ctrlOpen = expandedControlIds.has(character.id);
+  const hasPhoto = !!character.photoUrl;
+  const nameSuffix = dead ? ` ${icon("skull")}` : (insane ? ` ${icon("spiral")}` : "");
+  const mancP = Math.min(100, ((50 + 5 * vigor) / maxDmg) * 100);
+  const chaoP = Math.min(100, ((80 + 5 * vigor) / maxDmg) * 100);
+  const stateTicks = bleedingOn
+    ? `<i class="tick state state-mancando" style="left:${mancP}%" title="Mancando a partir de ${50 + 5 * vigor + 1}% de dano"></i><i class="tick state state-chao" style="left:${chaoP}%" title="No Chão a partir de ${80 + 5 * vigor + 1}% de dano"></i>`
+    : "";
+
+  card.classList.toggle("is-open", isExpanded);
+  card.classList.toggle("has-photo", hasPhoto);
+
   card.innerHTML = `
     <div class="character-card-head">
-      ${character.photoUrl
+      ${hasPhoto
         ? `<img class="character-thumb" src="${character.photoUrl}" alt="${escapeHtml(character.fullName)}">`
-        : `<div class="character-thumb character-thumb-placeholder">🕯️</div>`
+        : `<div class="character-thumb character-thumb-placeholder">${icon("user", 24)}</div>`
       }
       <div class="character-head-info">
         <div class="character-name-row">
-          <span class="character-name">${escapeHtml(character.fullName)}${dead ? " ☠️" : (insane ? " 🌀" : "")}</span>
+          <span class="character-name">${escapeHtml(character.fullName)}${nameSuffix}</span>
           ${isCharCreator ? `<button class="btn-mini" data-action="edit-char">✎</button>` : ""}
         </div>
         <div class="character-head-meta">
-          <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
           <span class="damage-status-pill ${status.cls}">${status.label} · ${damage}%${maxDmg !== 100 ? ` / ${maxDmg}%` : ""}</span>
-          ${bleedingOn && !dead ? `<span class="state-pill state-${bodySt.key}">${bodySt.icon} ${bodySt.label}</span>` : ""}
-          ${disadv && !dead ? `<span class="state-pill state-disadv" title="testes com desvantagem até se curar">⚠️ desvantagem</span>` : ""}
-          ${bleedNow ? `<span class="state-pill state-bleeding">🩸 sangrando</span>` : ""}
-          ${insane && !dead ? `<span class="state-pill state-insane">🌀 insano</span>` : ""}
+          ${bleedNow ? `<span class="state-pill state-bleeding">${icon("droplet")} <span class="pill-text">sangrando</span></span>` : ""}
+          ${insane && !dead ? `<span class="state-pill state-insane">${icon("spiral")} <span class="pill-text">insano</span></span>` : ""}
+          ${bleedingOn && !dead ? `<span class="state-pill secondary state-${bodySt.key}" title="${bodySt.label}">${stateIcon(bodySt.key)} <span class="pill-text">${bodySt.label}</span></span>` : ""}
+          ${disadv && !dead ? `<span class="state-pill secondary state-disadv" title="testes com desvantagem até se curar">${icon("alert")} <span class="pill-text">desvantagem</span></span>` : ""}
+          <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
         </div>
         <div class="damage-bar mini">
           <div class="damage-bar-fill" style="width:${fillPct}%; background:${status.color};"></div>
+          ${damageTicks()}
         </div>
       </div>
       <button class="expand-toggle ${isExpanded ? "open" : ""}" aria-label="Expandir ficha">▾</button>
     </div>
 
     <div class="character-card-details" ${isExpanded ? "" : "hidden"}>
-      <div class="character-traits">
-        <div class="trait-chip trait-strength">
-          <span class="trait-chip-label">⚔️ ponto forte</span>
-          <span class="trait-chip-value">${escapeHtml(character.strength || "—")}</span>
+      ${hasPhoto ? `
+        <div class="character-portrait">
+          <img src="${character.photoUrl}" alt="${escapeHtml(character.fullName)}">
+          <div class="portrait-overlay">
+            <span class="portrait-name">${escapeHtml(character.fullName)}${nameSuffix}</span>
+            <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
+          </div>
         </div>
-        <div class="trait-chip trait-weakness">
-          <span class="trait-chip-label">☠️ ponto fraco</span>
-          <span class="trait-chip-value">${escapeHtml(character.weakness || "—")}</span>
-        </div>
-      </div>
+      ` : ""}
 
-      ${(bleedingOn || sanityOn || hasAttrs) ? `
-        <div class="rules-block">
-          ${hasAttrs ? `
-            <div class="attr-chips">${ATTRS.map((a) => (canRollAttrs && d20On)
-              ? `<button type="button" class="attr-chip clickable ${menuAttr === a.key ? "active" : ""}" data-action="attr-roll" data-attr="${a.key}" title="${escapeHtml(a.desc)} — clique para rolar">${a.icon} ${a.label} <b>${attrValue(character, a.key)}</b></button>`
-              : `<span class="attr-chip" title="${escapeHtml(a.desc)}">${a.icon} ${a.label} <b>${attrValue(character, a.key)}</b></span>`).join("")}</div>
-            ${menuInfo ? `<div class="attr-roll-menu"><span>🎲 rolar <b>${menuInfo.label}</b> (+${attrValue(character, menuInfo.key)}):</span>${Object.entries(D20_TESTS).map(([k, t]) => `<button type="button" class="btn-mini" data-action="attr-test" data-test="${k}">${t.label} (${t.min}+)</button>`).join("")}<button type="button" class="btn-mini" data-action="attr-cancel">cancelar</button>${disadv ? `<span class="attr-roll-warn">⚠️ ${disadv}: este teste será rolado com <b>desvantagem</b> (2d20, vale o menor). Cure-se para voltar ao estado Normal.</span>` : ""}</div>` : ""}
-            <div class="attr-roll-result" data-char-id="${character.id}">${attrRollResults.get(character.id) || ""}</div>
-          ` : ""}
+      <section class="sheet-section vital">
+        ${sectionTitle("vigor", "vital")}
+        <div class="vital-row">
+          <span class="vital-num ${status.cls}">${damage}<small>%</small></span>
+          <span class="vital-meta">
+            <span class="damage-status-pill ${status.cls}">${status.label}</span>
+            ${maxDmg !== 100 ? `<span class="vital-limit">limite ${maxDmg}% (Vigor ${vigor})</span>` : `<span class="vital-limit">dano acumulado</span>`}
+          </span>
+        </div>
+        <div class="damage-bar big">
+          <div class="damage-bar-fill" style="width:${fillPct}%; background:${status.color};"></div>
+          ${damageTicks(stateTicks)}
+        </div>
+      </section>
+
+      ${hasAttrs ? `
+        <section class="sheet-section">
+          ${sectionTitle("dice", "atributos", (canRollAttrs && d20On) ? `<em class="section-hint">toque para rolar</em>` : "")}
+          <div class="attr-chips">${ATTRS.map((a, i) => {
+            const v = attrVals[i];
+            const top = !attrAllEqual && attrTop > 0 && v === attrTop ? " peak" : "";
+            const inner = `<span class="attr-ico">${icon(a.key)}</span><span class="attr-label"><span class="full">${a.label}</span><span class="abbr" aria-hidden="true">${a.label.slice(0, 3)}</span></span><b class="attr-num">${v}</b>${attrPips(v)}`;
+            return (canRollAttrs && d20On)
+              ? `<button type="button" class="attr-chip clickable${top} ${menuAttr === a.key ? "active" : ""}" data-action="attr-roll" data-attr="${a.key}" aria-label="${a.label} ${v}" title="${escapeHtml(a.desc)} — clique para rolar">${inner}<span class="attr-hint">rolar</span></button>`
+              : `<span class="attr-chip${top}" aria-label="${a.label} ${v}" title="${escapeHtml(a.desc)}">${inner}</span>`;
+          }).join("")}</div>
+          ${menuInfo ? `<div class="attr-roll-menu"><span>${icon("dice")} rolar <b>${menuInfo.label}</b> (+${attrValue(character, menuInfo.key)}):</span>${Object.entries(D20_TESTS).map(([k, t]) => `<button type="button" class="btn-mini" data-action="attr-test" data-test="${k}">${t.label} (${t.min}+)</button>`).join("")}<button type="button" class="btn-mini" data-action="attr-cancel">cancelar</button>${disadv ? `<span class="attr-roll-warn">${icon("alert")} ${disadv}: este teste será rolado com <b>desvantagem</b> (2d20, vale o menor). Cure-se para voltar ao estado Normal.</span>` : ""}</div>` : ""}
+          <div class="attr-roll-result" data-char-id="${character.id}">${attrRollResults.get(character.id) || ""}</div>
+        </section>
+      ` : ""}
+
+      ${(bleedingOn || sanityOn) ? `
+        <section class="sheet-section">
+          ${sectionTitle("activity", "estado")}
           ${bleedingOn ? `
             <div class="body-state state-${bodySt.key}">
-              <span class="body-state-name">${bodySt.icon} <b>${bodySt.label}</b></span>
+              <span class="body-state-name">${stateIcon(bodySt.key)} <b>${bodySt.label}</b></span>
               <span class="body-state-desc">${escapeHtml(bodySt.desc)}</span>
-              ${disadv ? `<span class="body-state-warn">⚠️ Todos os testes desta ficha são rolados com <b>desvantagem</b> (2d20, vale o menor) até ela se curar e voltar ao estado Normal.</span>` : ""}
+              ${disadv ? `<span class="body-state-warn">${icon("alert")} Todos os testes desta ficha são rolados com <b>desvantagem</b> (2d20, vale o menor) até ela se curar e voltar ao estado Normal.</span>` : ""}
             </div>
             ${bleedNow ? `
               <div class="bleed-row">
-                <span>🩸 <b>sangrando</b> — termina em <span class="bleed-countdown" data-bleed-start="${bleedNow.startedAt}">${fmtCountdown(bleedProg.msLeft)}</span> · ${bleedProg.appliedTicks}/${BLEED_TICKS} (+5% a cada 10 min)</span>
+                <span>${icon("droplet")} <b>sangrando</b> — termina em <span class="bleed-countdown" data-bleed-start="${bleedNow.startedAt}">${fmtCountdown(bleedProg.msLeft)}</span> · ${bleedProg.appliedTicks}/${BLEED_TICKS} (+5% a cada 10 min)</span>
                 ${canEditDamage ? `<button class="btn-mini" data-action="bleed-stop">parar</button>` : ""}
               </div>
-            ` : (canEditDamage && !dead ? `<div class="bleed-row"><button class="btn-mini" data-action="bleed-start">🩸 iniciar sangramento</button></div>` : "")}
+            ` : ""}
           ` : ""}
           ${sanityOn ? `
             <div class="sanity-block ${insane ? "insane" : ""}">
-              <div class="damage-head"><span>🌀 sanidade (100% = insano)</span><span class="sanity-val">${insane ? "INSANO" : `${sanity}%`}</span></div>
+              <div class="damage-head"><span>${icon("spiral")} sanidade (100% = insano)</span><span class="sanity-val">${insane ? "INSANO" : `${sanity}%`}</span></div>
               <div class="damage-bar"><div class="damage-bar-fill sanity-fill" style="width:${sanity}%;"></div></div>
               ${insane ? `<p class="insane-desc">${escapeHtml(INSANE_DESC)}</p>` : ""}
-              ${canEditDamage ? `
-                <div class="damage-quick sanity-quick">
-                  <button class="btn-mini" data-action="san" data-delta="-10">-10%</button>
-                  <button class="btn-mini" data-action="san" data-delta="-5">-5%</button>
-                  <button class="btn-mini" data-action="san" data-delta="5">+5%</button>
-                  <button class="btn-mini" data-action="san" data-delta="10">+10%</button>
-                </div>` : ""}
             </div>
           ` : ""}
-        </div>
+        </section>
       ` : ""}
 
       ${hungerThirstOn ? `
-        <div class="ht-block">
-          <div class="ht-stat-row ${hunger === 0 ? "critical" : ""}">
-            <span class="ht-stat-label">🍗 fome</span>
-            <div class="ht-pips">
-              ${[1, 2, 3].map((n) => `<span class="ht-pip hunger ${n <= hunger ? "filled" : ""}"></span>`).join("")}
-            </div>
-            ${canEditHungerThirst ? `
-              <div class="ht-stat-controls">
-                <button class="btn-mini" data-action="ht-dec" data-stat="hunger">-</button>
-                <button class="btn-mini" data-action="ht-inc" data-stat="hunger">+</button>
+        <section class="sheet-section">
+          ${sectionTitle("utensils", "necessidades")}
+          <div class="ht-block">
+            <div class="ht-stat-row ${hunger === 0 ? "critical" : ""}">
+              <span class="ht-stat-label ht-hunger">${icon("utensils")} fome</span>
+              <div class="ht-pips">
+                ${[1, 2, 3].map((n) => `<span class="ht-pip hunger ${n <= hunger ? "filled" : ""}"></span>`).join("")}
               </div>
-            ` : ""}
-          </div>
-          <div class="ht-stat-row ${thirst === 0 ? "critical" : ""}">
-            <span class="ht-stat-label">💧 sede</span>
-            <div class="ht-pips">
-              ${[1, 2, 3].map((n) => `<span class="ht-pip thirst ${n <= thirst ? "filled" : ""}"></span>`).join("")}
+              ${canEditHungerThirst ? `
+                <div class="ht-stat-controls">
+                  <button class="btn-mini" data-action="ht-dec" data-stat="hunger">-</button>
+                  <button class="btn-mini" data-action="ht-inc" data-stat="hunger">+</button>
+                </div>
+              ` : ""}
             </div>
-            ${canEditHungerThirst ? `
-              <div class="ht-stat-controls">
-                <button class="btn-mini" data-action="ht-dec" data-stat="thirst">-</button>
-                <button class="btn-mini" data-action="ht-inc" data-stat="thirst">+</button>
+            <div class="ht-stat-row ${thirst === 0 ? "critical" : ""}">
+              <span class="ht-stat-label ht-thirst">${icon("droplet")} sede</span>
+              <div class="ht-pips">
+                ${[1, 2, 3].map((n) => `<span class="ht-pip thirst ${n <= thirst ? "filled" : ""}"></span>`).join("")}
               </div>
-            ` : ""}
+              ${canEditHungerThirst ? `
+                <div class="ht-stat-controls">
+                  <button class="btn-mini" data-action="ht-dec" data-stat="thirst">-</button>
+                  <button class="btn-mini" data-action="ht-inc" data-stat="thirst">+</button>
+                </div>
+              ` : ""}
+            </div>
           </div>
-        </div>
+        </section>
       ` : ""}
 
-      ${canEditDamage ? `
-        <div class="damage-section">
-          <div class="damage-tool">
-            <span class="damage-tool-label">ajuste rápido de dano</span>
-            <div class="damage-quick">
-              <button class="btn-mini" data-action="dmg" data-delta="-10">-10%</button>
-              <button class="btn-mini" data-action="dmg" data-delta="-5">-5%</button>
-              <button class="btn-mini" data-action="dmg" data-delta="5">+5%</button>
-              <button class="btn-mini" data-action="dmg" data-delta="10">+10%</button>
-            </div>
-            <div class="damage-exact">
-              <span class="damage-exact-label">definir valor exato:</span>
-              <input type="number" class="damage-input" min="0" max="${maxDmg}" placeholder="0-${maxDmg}" data-action="dmg-input">
-              <button class="btn-mini damage-apply-btn" data-action="dmg-apply">aplicar</button>
-            </div>
+      <section class="sheet-section">
+        ${sectionTitle("user", "perfil")}
+        <div class="character-traits">
+          <div class="trait-chip trait-strength">
+            <span class="trait-chip-label">${icon("shield")} ponto forte</span>
+            <span class="trait-chip-value">${escapeHtml(character.strength || "—")}</span>
+          </div>
+          <div class="trait-chip trait-weakness">
+            <span class="trait-chip-label">${icon("skull")} ponto fraco</span>
+            <span class="trait-chip-value">${escapeHtml(character.weakness || "—")}</span>
           </div>
         </div>
-      ` : ""}
+        <div class="injuries-box">
+          <span class="injuries-label">ferimentos e limitações</span>
+          <textarea class="injuries-textarea" data-char-id="${character.id}" ${canEditInjuries ? "" : "disabled"} placeholder="${canEditInjuries ? "descreva ferimentos, sequelas, limitações..." : "somente o narrador ou quem criou a ficha pode editar."}">${escapeHtml(character.injuries || "")}</textarea>
+          ${canEditInjuries ? `<button class="btn-mini injuries-save" data-action="save-injuries">salvar ferimentos</button>` : ""}
+        </div>
+      </section>
 
-      <div class="injuries-box">
-        <span class="injuries-label">ferimentos e limitações</span>
-        <textarea class="injuries-textarea" data-char-id="${character.id}" ${canEditInjuries ? "" : "disabled"} placeholder="${canEditInjuries ? "descreva ferimentos, sequelas, limitações..." : "somente o narrador ou quem criou a ficha pode editar."}">${escapeHtml(character.injuries || "")}</textarea>
-        ${canEditInjuries ? `<button class="btn-mini injuries-save" data-action="save-injuries">salvar ferimentos</button>` : ""}
-      </div>
-
-      <div class="inventory-box">
+      <section class="sheet-section inventory-box">
         <div class="inventory-head">
-          <span class="injuries-label">inventário${limitsOn ? ` <span class="cap-count ${carried >= cap ? "full" : ""}" title="limite: 5 itens + 2 por ponto de Força">🎒 ${carried}/${cap}</span>` : ""}</span>
+          <span class="section-title">${icon("backpack")}<span>inventário</span>${limitsOn ? ` <span class="cap-count ${carried >= cap ? "full" : ""}" title="limite: 5 itens + 2 por ponto de Força">${carried}/${cap}</span>` : ""}</span>
           <span class="inventory-head-actions">
             ${(herbsOn && canTransferItems) ? `<button class="btn-mini" data-action="mix-herbs">🧪 misturar ervas</button>` : ""}
             ${canManageItems ? `<button class="btn-mini" data-action="add-item">+ item</button>` : ""}
@@ -1653,7 +1702,49 @@ function renderCharacterCard(character){
           `).join("")}
         </div>
         ${(character.items || []).length === 0 ? `<p class="inventory-empty">nenhum item.</p>` : ""}
-      </div>
+      </section>
+
+      ${canEditDamage ? `
+        <section class="sheet-section controls ${ctrlOpen ? "open" : ""}">
+          <button type="button" class="controls-bar" data-action="toggle-controls" aria-expanded="${ctrlOpen}">
+            ${sectionTitle("sliders", "controles do narrador")}
+            <span class="controls-chev">▾</span>
+          </button>
+          <div class="controls-body" ${ctrlOpen ? "" : "hidden"}>
+            <div class="damage-tool">
+              <span class="damage-tool-label">ajuste rápido de dano</span>
+              <div class="damage-quick">
+                <button class="btn-mini" data-action="dmg" data-delta="-10">-10%</button>
+                <button class="btn-mini" data-action="dmg" data-delta="-5">-5%</button>
+                <button class="btn-mini" data-action="dmg" data-delta="5">+5%</button>
+                <button class="btn-mini" data-action="dmg" data-delta="10">+10%</button>
+              </div>
+              <div class="damage-exact">
+                <span class="damage-exact-label">definir valor exato:</span>
+                <input type="number" class="damage-input" min="0" max="${maxDmg}" placeholder="0-${maxDmg}" data-action="dmg-input">
+                <button class="btn-mini damage-apply-btn" data-action="dmg-apply">aplicar</button>
+              </div>
+            </div>
+            ${sanityOn ? `
+              <div class="damage-tool">
+                <span class="damage-tool-label">ajuste de sanidade</span>
+                <div class="damage-quick sanity-quick">
+                  <button class="btn-mini" data-action="san" data-delta="-10">-10%</button>
+                  <button class="btn-mini" data-action="san" data-delta="-5">-5%</button>
+                  <button class="btn-mini" data-action="san" data-delta="5">+5%</button>
+                  <button class="btn-mini" data-action="san" data-delta="10">+10%</button>
+                </div>
+              </div>
+            ` : ""}
+            ${(bleedingOn && !dead && !bleedNow) ? `
+              <div class="damage-tool">
+                <span class="damage-tool-label">sangramento</span>
+                <button class="btn-mini" data-action="bleed-start">${icon("droplet")} iniciar sangramento</button>
+              </div>
+            ` : ""}
+          </div>
+        </section>
+      ` : ""}
 
       <p class="card-error" data-card-error hidden></p>
     </div>
@@ -1678,9 +1769,23 @@ function renderCharacterCard(character){
     const nowOpen = details.hidden;
     details.hidden = !nowOpen;
     toggleBtn.classList.toggle("open", nowOpen);
+    card.classList.toggle("is-open", nowOpen);
     if (nowOpen) expandedCharacterIds.add(character.id);
     else expandedCharacterIds.delete(character.id);
   });
+
+  const ctrlToggle = card.querySelector('[data-action="toggle-controls"]');
+  if (ctrlToggle) {
+    ctrlToggle.addEventListener("click", () => {
+      const body = card.querySelector(".controls-body");
+      const nowOpen = body.hidden;
+      body.hidden = !nowOpen;
+      ctrlToggle.setAttribute("aria-expanded", String(nowOpen));
+      ctrlToggle.closest(".controls").classList.toggle("open", nowOpen);
+      if (nowOpen) expandedControlIds.add(character.id);
+      else expandedControlIds.delete(character.id);
+    });
+  }
 
   if (isCharCreator) {
     const editBtn = card.querySelector('[data-action="edit-char"]');
@@ -2087,9 +2192,10 @@ function renderAttrBlock(){
   charAttrBlock.innerHTML = `
     <span class="modal-label">atributos — distribua ${ATTR_POINTS_TOTAL} pontos (máx. ${ATTR_MAX} cada)</span>
     <p class="attr-left ${left === 0 ? "done" : ""}">pontos restantes: <b>${left}</b> / ${ATTR_POINTS_TOTAL}</p>
+    <div class="attr-budget" aria-hidden="true">${Array.from({ length: ATTR_POINTS_TOTAL }, (_, i) => `<i class="${i < used ? "used" : ""}"></i>`).join("")}</div>
     ${ATTRS.map((a) => `
       <div class="attr-row">
-        <div class="attr-info"><span class="attr-name">${a.icon} ${a.label}</span><span class="attr-desc">${escapeHtml(a.desc)}</span></div>
+        <div class="attr-info"><span class="attr-name">${icon(a.key)} ${a.label}</span>${attrPips(attrDraft[a.key])}<span class="attr-desc">${escapeHtml(a.desc)}</span></div>
         <div class="attr-ctrl">
           <button type="button" class="btn-mini" data-attr="${a.key}" data-d="-1">-</button>
           <span class="attr-val">${attrDraft[a.key]}</span>
@@ -2260,9 +2366,12 @@ function d6ResultHtml(r){
 function d20ResultHtml(r){
   const cls = r.success === true ? "ok" : (r.success === false ? "fail" : "");
   const verdict = r.test ? (r.success ? "✔ SUCESSO" : "✖ FALHA") : "resultado";
-  return `<div class="dice-result-card ${cls}">
+  // destaque só visual: 20 ou 1 no dado (o resultado do teste continua sendo o total vs. dificuldade)
+  const nat = r.die === 20 ? "nat20" : (r.die === 1 ? "nat1" : "");
+  const natTag = nat === "nat20" ? `<span class="dice-nat">20 NATURAL</span>` : (nat === "nat1" ? `<span class="dice-nat">1 NATURAL</span>` : "");
+  return `<div class="dice-result-card ${cls} ${nat}">
     <div class="dice-big">${r.total}</div>
-    <div class="dice-outcome"><b>${verdict}</b><p>${escapeHtml(d20Message(r))}</p></div>
+    <div class="dice-outcome">${natTag}<b>${verdict}</b><p>${escapeHtml(d20Message(r))}</p></div>
   </div>`;
 }
 
