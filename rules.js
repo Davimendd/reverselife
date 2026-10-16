@@ -126,22 +126,30 @@ export const HERBS = {
 };
 export const HERB_SANITY_RESTORE = 20;
 
-// efeitos de uma ou duas ervas: cura (vida), para sangramento, sanidade restaurada
-export function herbEffect(types){
+// misturas: 2 ervas = +25% de eficiência, 3 ervas = +35% (valores arredondados)
+export const HERB_MIX_BONUS = { 2: 25, 3: 35 };
+export function herbMixBonus(types){ return HERB_MIX_BONUS[types.length] || 0; }
+const boosted = (base, bonus) => Math.round(base * (100 + bonus) / 100);
+
+// efeitos de 1 a 3 ervas: cura (vida), para sangramento, sanidade restaurada
+// healPct = % de cura base da campanha (itens de cura); a mistura aplica o bônus por cima
+export function herbEffect(types, healPct = 0){
   const has = (t) => types.includes(t);
-  const mixed = types.length > 1;
+  const bonus = herbMixBonus(types);
   return {
     heal: has("erva_verde"),
+    healAmount: has("erva_verde") ? boosted(healPct, bonus) : 0,
     stopBleed: has("erva_vermelha"),
-    sanity: has("erva_azul") ? HERB_SANITY_RESTORE : 0,
-    mixed
+    sanity: has("erva_azul") ? boosted(HERB_SANITY_RESTORE, bonus) : 0,
+    bonus,
+    mixed: types.length > 1
   };
 }
 
 export function herbEffectText(types, healPct){
-  const e = herbEffect(types);
+  const e = herbEffect(types, healPct);
   const parts = [];
-  if (e.heal) parts.push(`restaura ${healPct}% de vida`);
+  if (e.heal) parts.push(`restaura ${e.healAmount}% de vida`);
   if (e.stopBleed) parts.push("para o sangramento");
   if (e.sanity) parts.push(`restaura ${e.sanity}% de sanidade`);
   if (types.length === 1 && types[0] === "erva_verde") parts.push("não impede o sangramento");

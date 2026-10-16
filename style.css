@@ -2192,7 +2192,7 @@ body{
 .attr-ctrl{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
 .attr-val{ font-family:var(--disp); font-size:18px; color:var(--red-bright); min-width:18px; text-align:center; }
 
-.mix-effect{ margin:12px 0 0; font-size:12px; color:var(--ok-soft); line-height:1.5; }
+.mix-effect{ margin:12px 0 0; font-size:12px; color:var(--ok-soft); line-height:1.5; white-space:pre-line; }
 
 @media (max-width: 640px){
   .rule-row{ flex-wrap:wrap; }

@@ -3,7 +3,7 @@ import { getCurrentHandle, getCurrentUid, ensureHandle } from "./identity.js";
 import {
   ATTRS, ATTR_POINTS_TOTAL, ATTR_MAX, attrValue, validateAttrs, maxDamageOf, bodyState,
   bleedProgress, computeBleedTicks, BLEED_TICKS, D20_TESTS, rollD20, d20Message,
-  HERBS, herbEffect, herbEffectText, INSANE_DESC, carryCapacity, itemsCarried
+  HERBS, HERB_MIX_BONUS, HERB_SANITY_RESTORE, herbEffect, herbEffectText, INSANE_DESC, carryCapacity, itemsCarried
 } from "./rules.js";
 import { DICE_TABLES, DEFAULT_MODE } from "./dice-data.js";
 import { playDiceTick, playDeathAlert } from "./sound.js";
@@ -45,6 +45,7 @@ const mixModal = document.getElementById("mixModal");
 const mixModalClose = document.getElementById("mixModalClose");
 const mixHerbA = document.getElementById("mixHerbA");
 const mixHerbB = document.getElementById("mixHerbB");
+const mixHerbC = document.getElementById("mixHerbC");
 const mixEffect = document.getElementById("mixEffect");
 const mixError = document.getElementById("mixError");
 const mixSubmit = document.getElementById("mixSubmit");
@@ -2090,8 +2091,8 @@ itemPreset.addEventListener("change", () => {
 // ---------- ervas ----------
 function applyHerbUse(character, consumeIds, types, onError){
   const max = maxDamageOf(character);
-  const e = herbEffect(types);
   const healPct = currentCampaign.curePercent ?? 30;
+  const e = herbEffect(types, healPct);
   const oldDamage = clampDamage(character.damage || 0, max);
   const oldSanity = Math.max(0, Math.min(100, Math.round(character.sanity || 0)));
 
@@ -2108,10 +2109,11 @@ function applyHerbUse(character, consumeIds, types, onError){
 
   const patch = { items };
   const parts = [];
-  if (e.heal) { const nd = clampDamage(oldDamage - healPct, max); patch.damage = nd; parts.push(`vida ${oldDamage}% → ${nd}%`); }
+  if (e.heal) { const nd = clampDamage(oldDamage - e.healAmount, max); patch.damage = nd; parts.push(`vida ${oldDamage}% → ${nd}%`); }
   if (e.stopBleed && character.bleeding) { patch.bleeding = null; parts.push("sangramento parado"); }
   if (e.sanity) { const ns = Math.max(0, oldSanity - e.sanity); patch.sanity = ns; parts.push(`sanidade ${oldSanity}% → ${ns}%`); }
 
+  if (e.bonus) parts.push(`mistura de ${types.length} ervas: +${e.bonus}% de eficiência`);
   const names = used.map((u) => `<b>${escapeHtml(u.name)}</b>`).join(" + ");
   const icon = types.length > 1 ? "🧪" : (HERBS[types[0]] ? HERBS[types[0]].icon : "🌿");
   return campaignsAPI.patchCharacter(currentCampaign.id, character.id, patch)
@@ -2133,9 +2135,30 @@ function mixHerbOptions(character){
   return [...byCat.entries()].map(([cat, v]) => ({ cat, itemId: v.itemId, qty: v.qty }));
 }
 
+// ervas escolhidas no formulário (A e B obrigatórias, C opcional)
+function mixSelection(){
+  return [mixHerbA.value, mixHerbB.value, mixHerbC.value].filter(Boolean);
+}
+
 function updateMixEffect(){
-  if (mixHerbA.value === mixHerbB.value) { mixEffect.textContent = "escolha duas ervas de cores diferentes."; return; }
-  mixEffect.textContent = "efeito: " + herbEffectText([mixHerbA.value, mixHerbB.value], currentCampaign.curePercent ?? 30) + ".";
+  const types = mixSelection();
+  const healPct = currentCampaign.curePercent ?? 30;
+  const dup = new Set(types).size !== types.length;
+  const tip = `Mistura de 2 ervas: +${HERB_MIX_BONUS[2]}% de eficiência · mistura de 3 ervas: +${HERB_MIX_BONUS[3]}% de eficiência.`;
+  if (dup || types.length < 2) {
+    mixEffect.textContent = (dup ? "escolha ervas de cores diferentes." : "escolha pelo menos duas ervas.") + "\n" + tip;
+    mixSubmit.disabled = true;
+    return;
+  }
+  const e = herbEffect(types, healPct);
+  const parts = [];
+  if (e.heal) parts.push(`restaura ${e.healAmount}% de vida (base ${healPct}%)`);
+  if (e.stopBleed) parts.push("para o sangramento");
+  if (e.sanity) parts.push(`restaura ${e.sanity}% de sanidade (base ${HERB_SANITY_RESTORE}%)`);
+  mixEffect.textContent = `efeito: ${parts.join(", ")}.\n` +
+    `Mistura de ${types.length} ervas: +${e.bonus}% de eficiência já incluído acima.` +
+    (types.length === 2 ? `\nCom uma terceira erva a eficiência sobe para +${HERB_MIX_BONUS[3]}%.` : "");
+  mixSubmit.disabled = false;
 }
 
 function openMixModal(character){
@@ -2143,14 +2166,14 @@ function openMixModal(character){
   const opts = mixHerbOptions(character);
   mixError.textContent = "";
   if (opts.length < 2) {
-    mixHerbA.innerHTML = ""; mixHerbB.innerHTML = ""; mixEffect.textContent = "";
+    mixHerbA.innerHTML = ""; mixHerbB.innerHTML = ""; mixHerbC.innerHTML = ""; mixEffect.textContent = "";
     mixError.textContent = "é preciso ter ervas de pelo menos duas cores diferentes no inventário.";
     mixSubmit.disabled = true;
   } else {
     const html = opts.map((o) => `<option value="${o.cat}">${HERBS[o.cat].icon} ${HERBS[o.cat].label} (x${o.qty})</option>`).join("");
     mixHerbA.innerHTML = html; mixHerbB.innerHTML = html;
-    mixHerbA.value = opts[0].cat; mixHerbB.value = opts[1].cat;
-    mixSubmit.disabled = false;
+    mixHerbC.innerHTML = `<option value="">— nenhuma (mistura de 2) —</option>` + html;
+    mixHerbA.value = opts[0].cat; mixHerbB.value = opts[1].cat; mixHerbC.value = "";
     updateMixEffect();
   }
   mixModal.classList.remove("hidden");
@@ -2159,17 +2182,18 @@ function closeMixModal(){ mixModal.classList.add("hidden"); mixCharId = null; }
 
 mixHerbA.addEventListener("change", updateMixEffect);
 mixHerbB.addEventListener("change", updateMixEffect);
+mixHerbC.addEventListener("change", updateMixEffect);
 mixModalClose.addEventListener("click", closeMixModal);
 mixSubmit.addEventListener("click", async () => {
   const fresh = lastCharacterList.find((c) => c.id === mixCharId);
   if (!fresh || !currentCampaign) return;
-  const a = mixHerbA.value, b = mixHerbB.value;
-  if (a === b) { mixError.textContent = "escolha duas ervas de cores diferentes."; return; }
+  const types = mixSelection();
+  if (types.length < 2 || new Set(types).size !== types.length) { mixError.textContent = "escolha 2 ou 3 ervas de cores diferentes."; return; }
   const opts = mixHerbOptions(fresh);
-  const ia = opts.find((o) => o.cat === a), ib = opts.find((o) => o.cat === b);
-  if (!ia || !ib) { mixError.textContent = "essas ervas não estão mais no inventário."; return; }
+  const found = types.map((t) => opts.find((o) => o.cat === t));
+  if (found.some((f) => !f)) { mixError.textContent = "essas ervas não estão mais no inventário."; return; }
   mixSubmit.disabled = true;
-  const ok = await applyHerbUse(fresh, [ia.itemId, ib.itemId], [a, b], (err) => { mixError.textContent = describeError(err, "erro ao misturar."); });
+  const ok = await applyHerbUse(fresh, found.map((f) => f.itemId), types, (err) => { mixError.textContent = describeError(err, "erro ao misturar."); });
   mixSubmit.disabled = false;
   if (ok) closeMixModal();
 });
@@ -2272,7 +2296,7 @@ function renderRulesPanel(campaign){
         </div>` : ""}
       ${row("sanity", sanityOn, "🌀 sanidade", "Ao chegar em 100% o personagem fica insano: perde o juízo, não luta direito, pode ferir os colegas e chama atenção.", false)}
       ${row("bleeding", bleedOn, "🩸 sangramento", "Estados ligados ao dano: Normal (até 50%), Mancando (51–80%) e No Chão (81–99%). O narrador pode marcar um personagem como Sangrando: 5% de dano a cada 10 min durante 1 hora (30% no total).", false)}
-      ${row("herbs", herbsOn, "🌿 ervas", "Exige sanidade ou sangramento ativos. Itens prontos: 🌿 Verde restaura vida, mas não para o sangramento · 🌺 Vermelha para o sangramento · 🫐 Azul restaura 20% de sanidade · duas ervas podem ser misturadas (narrador ou jogador).", !(sanityOn || bleedOn) && !herbsOn)}
+      ${row("herbs", herbsOn, "🌿 ervas", "Exige sanidade ou sangramento ativos. Itens prontos: 🌿 Verde restaura vida, mas não para o sangramento · 🌺 Vermelha para o sangramento · 🫐 Azul restaura 20% de sanidade · podem ser misturadas 2 ou 3 de cores diferentes (+25% de eficiência com 2, +35% com 3) — narrador ou dono da ficha.", !(sanityOn || bleedOn) && !herbsOn)}
       <p class="rules-error" id="htError"></p>
     </div>`;
 
