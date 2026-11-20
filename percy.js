@@ -448,8 +448,79 @@ function tick(){
   if (expired && !refreshTimer) refreshTimer = setTimeout(() => { refreshTimer = null; ctx.refresh(); }, 400);
 }
 
+
+// ---------- cena de reivindicação (escuro, símbolo brilhando, nome e poderes um a um) ----------
+export function playClaimScene(godId, giftId){
+  const god = GOD_BY_ID[godId];
+  const gift = god && god.gifts.find((g) => g.id === giftId);
+  if (!god) return Promise.resolve();
+  return new Promise((resolve) => {
+    const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const items = [
+      ...god.powers.map((p) => ({ k: "Poder comum", e: p })),
+      { k: "Ultimate", e: god.ult },
+      ...(gift ? [{ k: "Presente divino", e: gift }] : []),
+    ];
+    const el = document.createElement("div");
+    el.className = "pz-claim";
+    el.style.setProperty("--god", god.color);
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", `Reivindicação por ${god.n}`);
+    el.innerHTML = `
+      <div class="pz-claim-light"></div>
+      <button type="button" class="pz-claim-skip">pular</button>
+      <div class="pz-claim-stage">
+        <p class="pz-claim-omen">Um sinal surge sobre a sua cabeça...</p>
+        <div class="pz-claim-sym">${god.ico}</div>
+        <p class="pz-claim-lead">Você foi reivindicado por</p>
+        <h2 class="pz-claim-name">${esc(god.n)}</h2>
+        <p class="pz-claim-title">${esc(god.tit)} · ${esc(god.dom)}</p>
+        <div class="pz-claim-powers">${items.map((it) => `<div class="pz-claim-pw"><span>${it.k}</span><b>${esc(it.e.n)}</b><small>${esc(it.e.tags)}</small></div>`).join("")}</div>
+        <button type="button" class="roll-btn pz-claim-go"><span class="roll-btn-text">CONTINUAR</span></button>
+      </div>`;
+    document.body.appendChild(el);
+
+    const q = (sel) => el.querySelector(sel);
+    const timers = [];
+    let finished = false;
+    const at = (ms, fn) => timers.push(setTimeout(fn, reduce ? Math.min(ms, 400) : ms));
+    const tick = () => { try { import("./sound.js").then((m) => m.playDiceTick()).catch(() => {}); } catch { /* sem som */ } };
+    const on = (sel, cls = "on") => { const n = q(sel); if (n) n.classList.add(cls); };
+    const showAll = () => {
+      timers.forEach(clearTimeout);
+      el.classList.add("on");
+      ["sym", "lead", "name", "title"].forEach((n) => on(`.pz-claim-${n}`));
+      q(".pz-claim-omen").classList.add("off");
+      el.querySelectorAll(".pz-claim-pw").forEach((n) => n.classList.add("on"));
+      q(".pz-claim-go").classList.add("on");
+      q(".pz-claim-skip").hidden = true;
+    };
+    const close = () => {
+      if (finished) return;
+      finished = true;
+      timers.forEach(clearTimeout);
+      document.removeEventListener("keydown", onKey);
+      el.classList.add("out");
+      setTimeout(() => { el.remove(); resolve(); }, reduce ? 0 : 500);
+    };
+    const onKey = (e) => { if (e.key === "Escape" || e.key === "Enter") { if (q(".pz-claim-go").classList.contains("on")) close(); else showAll(); } };
+    document.addEventListener("keydown", onKey);
+    q(".pz-claim-skip").addEventListener("click", showAll);
+    q(".pz-claim-go").addEventListener("click", close);
+
+    requestAnimationFrame(() => el.classList.add("on"));                        // a tela escurece
+    at(700, () => on(".pz-claim-omen"));
+    at(2600, () => { q(".pz-claim-omen").classList.add("off"); on(".pz-claim-sym"); tick(); });   // o símbolo brilha
+    at(4600, () => on(".pz-claim-lead"));
+    at(5400, () => { on(".pz-claim-name"); tick(); });                          // o nome do deus
+    at(6400, () => on(".pz-claim-title"));
+    items.forEach((_, i) => at(7600 + i * 1100, () => { el.querySelectorAll(".pz-claim-pw")[i].classList.add("on"); tick(); }));   // poderes, um a um
+    at(7600 + items.length * 1100 + 700, () => { on(".pz-claim-go"); q(".pz-claim-skip").hidden = true; });
+  });
+}
+
 // ============================================================
-// criação da ficha: escolha do parente divino e do presente
+// criação da ficha: o semideus começa indeterminado e é reivindicado por um parente divino
 // ============================================================
 export function takenGifts(characters, exceptId){
   const m = {};
@@ -459,32 +530,72 @@ export function takenGifts(characters, exceptId){
 
 export function mountCharBlock(el, characters, current){
   const taken = takenGifts(characters, current && current.id);
-  const sel = { god: current && current.percy ? current.percy.god : null, gift: current && current.percy ? current.percy.gift : null };
-  const locked = !!(current && current.percy);   // depois de criada, a escolha não muda
+  const already = !!(current && current.percy);                 // ficha que já foi reivindicada
+  const sel = { god: already ? current.percy.god : null, gift: already ? current.percy.gift : null };
+  let stage = already ? "claimed" : "idle";                     // idle (indeterminado) → choosing → claimed
   el.hidden = false;
+
+  const claimedHtml = () => {
+    const g = GOD_BY_ID[sel.god];
+    const gf = g.gifts.find((x) => x.id === sel.gift);
+    return `<div class="pz-claimed" style="--god:${g.color}">
+      <span class="pz-medal">${g.ico}</span>
+      <div><b class="pz-god-name">${esc(g.n)}</b><small>${esc(g.tit)} · reivindicado</small>
+        <span class="pz-claimed-gift">presente divino: <b>${esc(gf ? gf.n : "?")}</b></span></div>
+      <button type="button" class="btn-mini" data-replay>rever a cena</button>
+    </div>`;
+  };
+
   const draw = () => {
+    if (stage === "idle") {
+      el.innerHTML = `<span class="modal-label">parente divino</span>
+        <div class="pz-unknown">
+          <span class="pz-medal unknown">?</span>
+          <div><b>Semideus indeterminado</b><small>Seu pai ou mãe divino ainda não o reivindicou. Quando o sinal vier, os deuses do Olimpo se revelam.</small></div>
+        </div>
+        <button type="button" class="roll-btn small-btn pz-wait" data-reveal><span class="roll-btn-text">AGUARDAR O SINAL</span></button>`;
+      el.querySelector("[data-reveal]").addEventListener("click", () => { stage = "choosing"; draw(); });
+      return;
+    }
+    if (stage === "claimed") {
+      el.innerHTML = `<span class="modal-label">parente divino</span>${claimedHtml()}`;
+      el.querySelector("[data-replay]").addEventListener("click", () => playClaimScene(sel.god, sel.gift));
+      return;
+    }
     const g = sel.god ? GOD_BY_ID[sel.god] : null;
     el.innerHTML = `
-      <span class="modal-label">qual é o seu pai ou mãe divino?</span>
-      <div class="pz-gods ${locked ? "locked" : ""}">${GODS.map((x) => `<button type="button" class="pz-godbtn ${sel.god === x.id ? "on" : ""}" style="--god:${x.color}" data-god="${x.id}" ${locked ? "disabled" : ""}>
+      <span class="modal-label">quem o reivindica? escolha o seu pai ou mãe divino</span>
+      <div class="pz-gods">${GODS.map((x) => `<button type="button" class="pz-godbtn ${sel.god === x.id ? "on" : ""}" style="--god:${x.color}" data-god="${x.id}">
         <span class="pz-medal">${x.ico}</span><b>${esc(x.n)}</b></button>`).join("")}</div>
       ${g ? `<div class="pz-godinfo" style="--god:${g.color}">
         <b>${esc(g.n)}</b> — ${esc(g.tit)}<small>${esc(g.dom)}</small>
         <ul><li><b>Poderes comuns:</b> ${g.powers.map((p) => esc(p.n)).join(" · ")}</li><li><b>Ultimate:</b> ${esc(g.ult.n)}</li></ul>
-        <span class="modal-label">presente divino (apenas um por ficha — escolha com cuidado, nenhum outro semideus poderá tê-lo)</span>
+        <span class="modal-label">presente divino (apenas um por ficha — nenhum outro semideus da campanha poderá tê-lo)</span>
         <div class="pz-gifts">${g.gifts.map((gf) => {
           const by = taken[giftKey(g.id, gf.id)];
-          return `<button type="button" class="pz-giftbtn ${sel.gift === gf.id ? "on" : ""}" data-gift="${gf.id}" ${by || locked ? "disabled" : ""}>
+          return `<button type="button" class="pz-giftbtn ${sel.gift === gf.id ? "on" : ""}" data-gift="${gf.id}" ${by ? "disabled" : ""}>
             <b>${esc(gf.n)}</b><small>${esc(gf.tags)}</small><span>${esc(gf.d)}</span>${by ? `<em>já reservado por ${esc(by)}</em>` : ""}</button>`;
-        }).join("")}</div></div>` : `<p class="modal-rules">escolha um parente divino para ver os poderes e presentes.</p>`}`;
+        }).join("")}</div></div>` : `<p class="modal-rules">toque em um deus para conhecer os poderes e presentes dele.</p>`}
+      <div class="pz-claim-actions">
+        <button type="button" class="btn-mini" data-back>voltar</button>
+        <button type="button" class="roll-btn small-btn pz-confirm" data-confirm ${sel.god && sel.gift ? "" : "disabled"}><span class="roll-btn-text">CONFIRMAR REIVINDICAÇÃO</span></button>
+      </div>
+      <p class="modal-rules">a escolha é definitiva: depois de confirmada, não dá para trocar de parente divino.</p>`;
     el.querySelectorAll("[data-god]").forEach((b) => b.addEventListener("click", () => { sel.god = b.dataset.god; sel.gift = null; draw(); }));
     el.querySelectorAll("[data-gift]").forEach((b) => b.addEventListener("click", () => { sel.gift = b.dataset.gift; draw(); }));
+    el.querySelector("[data-back]").addEventListener("click", () => { stage = "idle"; sel.god = null; sel.gift = null; draw(); });
+    el.querySelector("[data-confirm]").addEventListener("click", async () => {
+      if (!(sel.god && sel.gift)) return;
+      await playClaimScene(sel.god, sel.gift);
+      stage = "claimed";
+      draw();
+    });
   };
   draw();
   return {
-    get: () => ({ ...sel }),
-    validate: () => (!sel.god ? "escolha o seu parente divino." : (!sel.gift ? "escolha um presente divino." : "")),
-    locked,
+    get: () => ({ god: sel.god, gift: sel.gift }),
+    validate: () => (stage !== "claimed" ? "aguarde o sinal e confirme a reivindicação do seu parente divino." : ""),
+    locked: already,
   };
 }
 

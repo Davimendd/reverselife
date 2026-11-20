@@ -262,7 +262,7 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 **O que muda na ficha**
 
 - **Personalidade** no lugar de ponto forte/fraco.
-- **Parente divino**, escolhido na criação entre 16 deuses (Zeus, Hécate, Poseidon, Deméter, Ares, Atena, Apolo, Circe, Hefesto, Afrodite, Hermes, Dionísio, Hades, Íris, Hipnos e Morfeu). A escolha é definitiva.
+- **Parente divino**, escolhido na criação entre 16 deuses (Zeus, Hécate, Poseidon, Deméter, Ares, Atena, Apolo, Circe, Hefesto, Afrodite, Hermes, Dionísio, Hades, Íris, Hipnos e Morfeu). O semideus começa **indeterminado**; ao clicar em *aguardar o sinal* aparecem os deuses, e depois de escolher o parente e o presente e **confirmar a reivindicação** roda a **cena de reivindicação**: a tela escurece, o símbolo do deus brilha, o nome aparece e os poderes (2 comuns, ultimate e o presente) são revelados um a um (há botão *pular*, e a cena respeita a preferência de movimento reduzido do sistema). A escolha é definitiva, mas dá para rever a cena pelo botão na ficha em criação.
 - **Poderes**: 2 comuns + 1 ultimate do parente divino, todos com botão de uso.
 - **Presente divino**: um por ficha, entre 3 opções do parente. **Cada presente só pode ser escolhido por uma ficha da campanha** (os já escolhidos aparecem bloqueados).
 - **Soco**: ataque padrão, 1d4 + Força.
