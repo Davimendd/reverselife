@@ -14,6 +14,8 @@ Site de apoio a mesas de RPG de terror: campanhas com fichas de personagem, inve
 - `sound.js` — efeitos sonoros sintetizados (sem arquivos de áudio)
 - `app.js` — lógica do dado, animação e feed em tempo real
 - `campaigns.js` — lógica de campanhas, personagens, dano, ferimentos, inventário e fome/sede
+- `icons.js` — ícones SVG de traço usados na ficha
+- `olympus-data.js`, `percy-engine.js`, `percy.js` — sistema Percy Jackson (dados dos deuses, regras e interface)
 - `manifest.json` — metadados do app instalável (PWA): nome, cores, ícones
 - `sw.js` — service worker: cacheia os arquivos do site pra abrir mais rápido e funcionar offline
 - `pwa.js` — registra o service worker
@@ -227,10 +229,23 @@ service cloud.firestore {
         allow create: if request.auth != null;
         allow update, delete: if false;
       }
+
+      // fila de ataques/efeitos entre fichas (sistema Percy Jackson)
+      match /hits/{hitId} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow update: if request.auth != null && (
+          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid ||
+          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)/characters/$(resource.data.targetId)).data.creatorUid
+        ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applied', 'appliedBy', 'appliedAt']);
+        allow delete: if false;
+      }
     }
   }
 }
 ```
+
+A coleção `/hits` é a **fila de ataques e efeitos entre fichas** do sistema Percy Jackson. Quando um jogador ataca ou usa um poder em uma ficha que não é dele, o site não consegue alterar o dano dessa ficha (só o narrador e o dono podem), então grava um "hit" ali. Quem tem permissão (o narrador ou o dono da ficha-alvo), assim que abrir a campanha, aplica o hit automaticamente e o marca como aplicado — tudo dentro de uma transação, então nada é aplicado duas vezes. **Sem essa regra publicada, ataques entre fichas de donos diferentes não funcionam** (ataques do próprio narrador e em fichas próprias funcionam normalmente).
 
 A condição `!('creatorUid' in resource.data)` existe para não travar campanhas/fichas criadas **antes** de o site ter login (elas não têm esse campo salvo) — nesses casos, qualquer pessoa logada ainda consegue editar. Fichas e campanhas criadas depois do login já vêm com `creatorUid` preenchido e passam a valer só para quem criou.
 
@@ -239,6 +254,40 @@ A condição `request.resource.data.diff(resource.data).affectedKeys().hasOnly([
 Sem Firebase configurado, login, campanhas e personagens funcionam em modo local (localStorage + BroadcastChannel), com as imagens guardadas como base64 — funciona só entre abas do mesmo navegador, ideal para testar antes de configurar.
 
 **Se aparecer "acesso negado pelo Firestore" ao salvar:** normalmente é porque as regras no console do Firebase ainda não foram atualizadas para a versão acima — copie o bloco de novo em **Firestore Database > Regras** e publique. Se o erro persistir, abra o console do navegador (F12) para ver o código de erro exato.
+
+## Sistema Percy Jackson (semideuses)
+
+Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**exige o sistema D20**). **Ao ativar, todas as fichas mudam**: o site pede confirmação antes. Desativar volta ao visual normal sem apagar os dados do sistema.
+
+**O que muda na ficha**
+
+- **Personalidade** no lugar de ponto forte/fraco.
+- **Parente divino**, escolhido na criação entre 16 deuses (Zeus, Hécate, Poseidon, Deméter, Ares, Atena, Apolo, Circe, Hefesto, Afrodite, Hermes, Dionísio, Hades, Íris, Hipnos e Morfeu). A escolha é definitiva.
+- **Poderes**: 2 comuns + 1 ultimate do parente divino, todos com botão de uso.
+- **Presente divino**: um por ficha, entre 3 opções do parente. **Cada presente só pode ser escolhido por uma ficha da campanha** (os já escolhidos aparecem bloqueados).
+- **Soco**: ataque padrão, 1d4 + Força.
+- **Dracmas de Ouro**: caixa pequena; só o narrador altera.
+- **Inventário**: alimento e bebida saem. Novas categorias: **arma** (atributo do ataque, dado de dano, corpo a corpo ou à distância), **armadura** e **escudo** (quanto absorvem por golpe e a durabilidade total) e **objeto mágico** (efeito em texto, com teste e dano opcionais). Cura e equipamento continuam como eram.
+- Fichas criadas **antes** da ativação ficam sem parente divino; o dono escolhe pelo botão ✎.
+
+**Como funcionam as rolagens**
+
+- Todo uso abre uma janela onde você escolhe a **dificuldade** (Normal 10+, Difícil 15+, Arriscado 18+, que representa a defesa do alvo), as **opções** do poder e os **alvos** (quem sofre e quem recebe cura ou proteção).
+- Teste do atacante: **1d20 + atributo** (+/- efeitos ativos). Se falhar, nada acontece e o poder entra em recarga.
+- **Dano**: dados do poder/arma. Armas **corpo a corpo** (e o soco) somam a **Força**; armas **à distância** não. **20 natural**: dano **×2** (×3 em arma à distância).
+- **Resistência do alvo**: rolada automaticamente (1d20 + atributo). Contra Normal (10+) ou, nos poderes de controle, contra o total do atacante (empate favorece o atacante).
+- **Unidade de dano**: 1 ponto = 1% de dano na ficha; cura de N = -N%. O limite continua sendo 100% + 5% por ponto de Vigor.
+- **Ordem de defesa** ao receber dano: reduções por golpe (ex.: -5 em todo dano) → barreiras (ex.: Égide, absorve 15) → armaduras/escudos equipados (absorvem até o valor definido e perdem a mesma quantidade de durabilidade; chegando a zero **quebram**; o narrador pode reparar) → o resto vira dano na ficha.
+- **Custos**: poderes com custo (ex.: Ira do Olimpo, 15%) aplicam o dano ao próprio usuário. Se o custo mataria, a ficha fica em 1% do limite e ganha o efeito **Inconsciente**.
+
+**Efeitos ativos, recargas e alvos**
+
+- Bônus, penalidades, barreiras e estados aparecem como **chips** na ficha, com tempo restante, número de ações ou de golpes. Modificadores de atributo entram nas rolagens e aparecem ao lado do atributo. O dono ou o narrador podem gastar uma ação (-1) ou remover um efeito.
+- Efeitos com tempo somem sozinhos (inclusive o dano de "fim de efeito" da Carnificina de Ares).
+- Recargas em minutos têm contagem regressiva; "1x por combate" e "1x por dia" ficam marcados como usados até o dono ou o narrador clicar em ↺. O narrador tem "recarregar tudo" em *Controles do narrador*.
+- **Ataques entre fichas**: se você tem permissão na ficha-alvo (é o narrador ou o dono), o efeito é aplicado na hora. Se não, vai para a **fila de hits** (regra do Firestore acima) e é aplicado por quem tiver permissão assim que abrir a campanha.
+
+**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador) e `percy.js` (interface e integração).
 
 ## Como funciona a rolagem
 

@@ -8,6 +8,7 @@ import {
 import { DICE_TABLES, DEFAULT_MODE } from "./dice-data.js";
 import { playDiceTick, playDeathAlert } from "./sound.js";
 import { icon, stateIcon } from "./icons.js";
+import { initPercy, isPercy, percySections, itemMeta, itemActions, attrBadge, attrBonusOf, narratorControls as percyControls, bindCard as bindPercyCard, onHits as percyOnHits, mountCharBlock, mountItemFields, takenGifts as percyTakenGifts, godOf } from "./percy.js";
 
 // ------------------------------------------------------------
 // categorias de item de inventário
@@ -20,7 +21,10 @@ const ITEM_CATEGORIES = {
   cura: { label: "Cura", icon: "💉" },
   erva_verde: { label: "Erva Verde", icon: "🌿" },
   erva_vermelha: { label: "Erva Vermelha", icon: "🌺" },
-  erva_azul: { label: "Erva Azul", icon: "🫐" }
+  erva_azul: { label: "Erva Azul", icon: "🫐" },
+  armadura: { label: "Armadura", icon: "🛡️" },
+  escudo: { label: "Escudo", icon: "🔰" },
+  magico: { label: "Objeto mágico", icon: "✨" }
 };
 
 function categoryIcon(category){
@@ -218,7 +222,7 @@ function computeTransfer(fromItems, toItems, itemId, quantity, toCapacity = null
 
 async function initFirebaseBackend(){
   const db = await getDb();
-  const { collection, addDoc, doc, updateDoc, runTransaction, writeBatch, query, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
+  const { collection, addDoc, doc, updateDoc, runTransaction, writeBatch, query, orderBy, limit, where, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
@@ -241,7 +245,7 @@ async function initFirebaseBackend(){
     });
   };
 
-  campaignsAPI.createCharacter = async (campaignId, { fullName, gender, strength, weakness, photoFile, attrs }) => {
+  campaignsAPI.createCharacter = async (campaignId, { fullName, gender, strength, weakness, photoFile, attrs, extra }) => {
     const creator = getCurrentHandle();
     const creatorUid = getCurrentUid();
     let photoUrl = "";
@@ -252,7 +256,7 @@ async function initFirebaseBackend(){
     const charsRef = collection(db, "campaigns", campaignId, "characters");
     const docRef = await addDoc(charsRef, {
       fullName, gender, strength, weakness, photoUrl,
-      creator, creatorUid, damage: 0, injuries: "", items: [], sanity: 0, bleeding: null, attrs: attrs || null, createdAt: serverTimestamp()
+      creator, creatorUid, damage: 0, injuries: "", items: [], sanity: 0, bleeding: null, attrs: attrs || null, ...(extra || {}), createdAt: serverTimestamp()
     });
     return docRef.id;
   };
@@ -268,8 +272,8 @@ async function initFirebaseBackend(){
     await updateDoc(doc(db, "campaigns", campaignId, "characters", characterId), patch);
   };
 
-  campaignsAPI.updateCharacterInfo = async (campaignId, characterId, { fullName, gender, strength, weakness, photoFile }) => {
-    const patch = { fullName, gender, strength, weakness };
+  campaignsAPI.updateCharacterInfo = async (campaignId, characterId, { fullName, gender, strength, weakness, photoFile, extra }) => {
+    const patch = { fullName, gender, strength, weakness, ...(extra || {}) };
     if (photoFile) {
       const { dataUrl } = await compressImage(photoFile, 480, 0.72);
       patch.photoUrl = dataUrl;
@@ -324,6 +328,44 @@ async function initFirebaseBackend(){
     await updateDoc(doc(db, "campaigns", campaignId), patch);
   };
 
+  // ---- sistema Percy Jackson: leitura-e-escrita atômica da ficha + fila de ataques (hits) ----
+  campaignsAPI.mutateCharacter = async (campaignId, characterId, fn) => {
+    const ref = doc(db, "campaigns", campaignId, "characters", characterId);
+    return runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) return null;
+      const patch = fn(snap.data());
+      if (patch) tx.update(ref, patch);
+      return patch || null;
+    });
+  };
+
+  campaignsAPI.createHit = async (campaignId, hit) => {
+    await addDoc(collection(db, "campaigns", campaignId, "hits"), { ...hit, applied: false, createdAt: serverTimestamp() });
+  };
+
+  campaignsAPI.listenHits = (campaignId, callback) => {
+    const q = query(collection(db, "campaigns", campaignId, "hits"), where("applied", "==", false));
+    return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), (err) => console.error("Falha ao ler a fila de ataques:", err));
+  };
+
+  // aplica um hit e o marca como aplicado na MESMA transação (evita aplicar duas vezes)
+  campaignsAPI.applyHit = async (campaignId, hitId, targetId, fn) => {
+    const hitRef = doc(db, "campaigns", campaignId, "hits", hitId);
+    const charRef = doc(db, "campaigns", campaignId, "characters", targetId);
+    return runTransaction(db, async (tx) => {
+      const hitSnap = await tx.get(hitRef);
+      if (!hitSnap.exists() || hitSnap.data().applied) return false;
+      const charSnap = await tx.get(charRef);
+      if (charSnap.exists()) {
+        const patch = fn(charSnap.data(), hitSnap.data());
+        if (patch) tx.update(charRef, patch);
+      }
+      tx.update(hitRef, { applied: true, appliedBy: getCurrentUid() || "", appliedAt: Date.now() });
+      return true;
+    });
+  };
+
   campaignsAPI.bulkPatchCharacters = async (campaignId, updates) => {
     const batch = writeBatch(db);
     updates.forEach(({ characterId, patch }) => {
@@ -351,6 +393,7 @@ function initLocalBackend(){
   const CAMPAIGNS_KEY = "rl_local_campaigns";
   const charKey = (campaignId) => `rl_local_characters_${campaignId}`;
   const eventKey = (campaignId) => `rl_local_events_${campaignId}`;
+  const hitKey = (campaignId) => `rl_local_hits_${campaignId}`;
   const channel = ("BroadcastChannel" in window) ? new BroadcastChannel("reverse_life_campaigns") : null;
 
   function readCampaigns(){ try { return JSON.parse(localStorage.getItem(CAMPAIGNS_KEY) || "[]"); } catch { return []; } }
@@ -359,10 +402,13 @@ function initLocalBackend(){
   function writeCharacters(campaignId, list){ localStorage.setItem(charKey(campaignId), JSON.stringify(list)); }
   function readEvents(campaignId){ try { return JSON.parse(localStorage.getItem(eventKey(campaignId)) || "[]"); } catch { return []; } }
   function writeEvents(campaignId, list){ localStorage.setItem(eventKey(campaignId), JSON.stringify(list.slice(-60))); }
+  function readHits(campaignId){ try { return JSON.parse(localStorage.getItem(hitKey(campaignId)) || "[]"); } catch { return []; } }
+  function writeHits(campaignId, list){ localStorage.setItem(hitKey(campaignId), JSON.stringify(list.slice(-100))); }
 
   let campaignListeners = [];
   let characterListeners = {};
   let eventListeners = {};
+  let hitListeners = {};
 
   function notifyCampaigns(){
     const list = readCampaigns();
@@ -371,6 +417,10 @@ function initLocalBackend(){
   function notifyCharacters(campaignId){
     const list = readCharacters(campaignId);
     (characterListeners[campaignId] || []).forEach((cb) => cb(list));
+  }
+  function notifyHits(campaignId){
+    const list = readHits(campaignId).filter((h) => !h.applied);
+    (hitListeners[campaignId] || []).forEach((cb) => cb(list));
   }
   function notifyEvents(campaignId){
     const list = readEvents(campaignId).map((e) => ({ ...e, date: new Date(e.ts) }));
@@ -383,6 +433,7 @@ function initLocalBackend(){
       if (msg.type === "campaign") notifyCampaigns();
       if (msg.type === "character") notifyCharacters(msg.campaignId);
       if (msg.type === "event") notifyEvents(msg.campaignId);
+      if (msg.type === "hit") notifyHits(msg.campaignId);
     };
   }
   window.addEventListener("storage", (ev) => {
@@ -391,6 +442,8 @@ function initLocalBackend(){
       notifyCharacters(ev.key.slice("rl_local_characters_".length));
     } else if (ev.key && ev.key.startsWith("rl_local_events_")) {
       notifyEvents(ev.key.slice("rl_local_events_".length));
+    } else if (ev.key && ev.key.startsWith("rl_local_hits_")) {
+      notifyHits(ev.key.slice("rl_local_hits_".length));
     }
   });
 
@@ -417,7 +470,7 @@ function initLocalBackend(){
     return () => { campaignListeners = campaignListeners.filter((cb) => cb !== callback); };
   };
 
-  campaignsAPI.createCharacter = async (campaignId, { fullName, gender, strength, weakness, photoFile, attrs }) => {
+  campaignsAPI.createCharacter = async (campaignId, { fullName, gender, strength, weakness, photoFile, attrs, extra }) => {
     const creator = getCurrentHandle();
     const creatorUid = getCurrentUid();
     let photoUrl = "";
@@ -427,7 +480,7 @@ function initLocalBackend(){
     }
     const id = `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const list = readCharacters(campaignId);
-    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, creatorUid, damage: 0, injuries: "", items: [], sanity: 0, bleeding: null, attrs: attrs || null, createdAt: Date.now() });
+    list.push({ id, fullName, gender, strength, weakness, photoUrl, creator, creatorUid, damage: 0, injuries: "", items: [], sanity: 0, bleeding: null, attrs: attrs || null, ...(extra || {}), createdAt: Date.now() });
     writeCharacters(campaignId, list);
     notifyCharacters(campaignId);
     if (channel) channel.postMessage({ type: "character", campaignId });
@@ -453,8 +506,8 @@ function initLocalBackend(){
     if (channel) channel.postMessage({ type: "character", campaignId });
   };
 
-  campaignsAPI.updateCharacterInfo = async (campaignId, characterId, { fullName, gender, strength, weakness, photoFile }) => {
-    const patch = { fullName, gender, strength, weakness };
+  campaignsAPI.updateCharacterInfo = async (campaignId, characterId, { fullName, gender, strength, weakness, photoFile, extra }) => {
+    const patch = { fullName, gender, strength, weakness, ...(extra || {}) };
     if (photoFile) {
       const { dataUrl } = await compressImage(photoFile, 480, 0.72);
       patch.photoUrl = dataUrl;
@@ -499,6 +552,45 @@ function initLocalBackend(){
     notifyCharacters(campaignId);
     if (channel) channel.postMessage({ type: "character", campaignId });
     return result.moved;
+  };
+
+  // ---- sistema Percy Jackson (modo local) ----
+  campaignsAPI.mutateCharacter = async (campaignId, characterId, fn) => {
+    const list = readCharacters(campaignId);
+    const idx = list.findIndex((c) => c.id === characterId);
+    if (idx === -1) return null;
+    const patch = fn(list[idx]);
+    if (patch) {
+      list[idx] = { ...list[idx], ...patch };
+      writeCharacters(campaignId, list);
+      notifyCharacters(campaignId);
+      if (channel) channel.postMessage({ type: "character", campaignId });
+    }
+    return patch || null;
+  };
+  campaignsAPI.createHit = async (campaignId, hit) => {
+    const list = readHits(campaignId);
+    list.push({ ...hit, id: `h_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, applied: false, ts: Date.now() });
+    writeHits(campaignId, list);
+    notifyHits(campaignId);
+    if (channel) channel.postMessage({ type: "hit", campaignId });
+  };
+  campaignsAPI.listenHits = (campaignId, callback) => {
+    hitListeners[campaignId] = hitListeners[campaignId] || [];
+    hitListeners[campaignId].push(callback);
+    callback(readHits(campaignId).filter((h) => !h.applied));
+    return () => { hitListeners[campaignId] = (hitListeners[campaignId] || []).filter((cb) => cb !== callback); };
+  };
+  campaignsAPI.applyHit = async (campaignId, hitId, targetId, fn) => {
+    const hits = readHits(campaignId);
+    const hi = hits.findIndex((h) => h.id === hitId);
+    if (hi === -1 || hits[hi].applied) return false;
+    hits[hi] = { ...hits[hi], applied: true };
+    writeHits(campaignId, hits);                       // marca primeiro: evita aplicar duas vezes
+    await campaignsAPI.mutateCharacter(campaignId, targetId, (data) => fn(data, hits[hi]));
+    notifyHits(campaignId);
+    if (channel) channel.postMessage({ type: "hit", campaignId });
+    return true;
   };
 
   campaignsAPI.patchCampaign = async (campaignId, patch) => {
@@ -790,6 +882,8 @@ function checkForNotifications(newList){
 // ------------------------------------------------------------
 let currentCampaign = null;
 let unsubscribeCharacters = null;
+let unsubscribeHits = null;
+let lastHits = [];
 let unsubscribeEvents = null;
 
 function renderCampaignCard(campaign){
@@ -1043,9 +1137,19 @@ function openCampaign(campaign){
       lastCharacterList = list;
       checkBleedingTicks();
       applyCharacterFilter();
+      percyOnHits(lastHits);
     });
   };
   tryListen();
+
+  // fila de ataques/efeitos entre fichas (sistema Percy Jackson)
+  if (unsubscribeHits) { unsubscribeHits(); unsubscribeHits = null; }
+  lastHits = [];
+  const tryListenHits = () => {
+    if (!campaignsAPI.listenHits) { setTimeout(tryListenHits, 100); return; }
+    unsubscribeHits = campaignsAPI.listenHits(campaign.id, (list) => { lastHits = list; percyOnHits(list); });
+  };
+  tryListenHits();
 
   const tryListenEvents = () => {
     if (!campaignsAPI.listenEvents) { setTimeout(tryListenEvents, 100); return; }
@@ -1064,6 +1168,7 @@ function openCampaign(campaign){
 backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeCharacters) { unsubscribeCharacters(); unsubscribeCharacters = null; }
   if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
+  if (unsubscribeHits) { unsubscribeHits(); unsubscribeHits = null; }
   currentCampaign = null;
   previousCharacterStates = new Map();
   cureConfigEl.hidden = true;
@@ -1133,6 +1238,28 @@ campaignSubmit.addEventListener("click", async () => {
 // modal: criar / editar personagem
 // ------------------------------------------------------------
 let editingCharacter = null; // null = criando novo · objeto = editando ficha existente
+let percyCharCtl = null;     // escolha do parente divino (só campanhas Percy Jackson)
+
+function setPercyForm(character){
+  const on = isPercy(currentCampaign);
+  const lab = (id) => document.querySelector(`label[for="${id}"]`);
+  const weakRow = charWeakness.closest(".modal-input-row");
+  lab("charStrength").textContent = on ? "personalidade" : "ponto forte";
+  charStrength.placeholder = on ? "como o semideus age e pensa? ex.: leal, esquentado, curioso..." : "ex: força sobre-humana";
+  charStrength.maxLength = on ? 140 : 80;
+  lab("charWeakness").style.display = on ? "none" : "";
+  weakRow.style.display = on ? "none" : "";
+  let host = document.getElementById("percyCharBlock");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "percyCharBlock";
+    host.className = "pz-charblock";
+    charAttrBlock.insertAdjacentElement("beforebegin", host);
+  }
+  if (!on) { host.hidden = true; host.innerHTML = ""; percyCharCtl = null; return; }
+  charStrength.value = character ? (character.personality || "") : "";
+  percyCharCtl = mountCharBlock(host, lastCharacterList, character);
+}
 
 function openCharacterModal(character){
   editingCharacter = character || null;
@@ -1141,6 +1268,7 @@ function openCharacterModal(character){
   charGender.value = character ? character.gender || "" : "";
   charStrength.value = character ? character.strength || "" : "";
   charWeakness.value = character ? character.weakness || "" : "";
+  setPercyForm(character);
   charPhoto.value = "";
   if (character && character.photoUrl) {
     charPhotoPreview.querySelector("img").src = character.photoUrl;
@@ -1175,8 +1303,8 @@ characterSubmit.addEventListener("click", async () => {
 
   const fullName = charName.value.trim();
   const gender = charGender.value.trim();
-  const strength = charStrength.value.trim();
-  const weakness = charWeakness.value.trim();
+  let strength = charStrength.value.trim();
+  let weakness = charWeakness.value.trim();
   const photoFile = charPhoto.files && charPhoto.files[0];
 
   if (fullName.length < 2) {
@@ -1186,6 +1314,26 @@ characterSubmit.addEventListener("click", async () => {
 
   const isEditing = !!editingCharacter;
 
+  // campanha Percy Jackson: personalidade no lugar de ponto forte/fraco + parente divino
+  const percyOn = isPercy(currentCampaign) && percyCharCtl;
+  let percyExtra = null;
+  if (percyOn) {
+    const personality = strength;
+    if (personality.length < 3) { characterError.textContent = "descreva a personalidade do semideus."; return; }
+    percyExtra = { personality };
+    strength = isEditing ? (editingCharacter.strength || "") : "";
+    weakness = isEditing ? (editingCharacter.weakness || "") : "";
+    if (!(isEditing && editingCharacter.percy)) {
+      const bad = percyCharCtl.validate();
+      if (bad) { characterError.textContent = bad; return; }
+      const sel = percyCharCtl.get();
+      const taken = percyTakenGifts(lastCharacterList, isEditing ? editingCharacter.id : null);
+      if (taken[`${sel.god}:${sel.gift}`]) { characterError.textContent = `esse presente divino já foi reservado por ${taken[`${sel.god}:${sel.gift}`]}.`; return; }
+      percyExtra.percy = sel;
+      if (!isEditing) Object.assign(percyExtra, { drachmas: 0, fx: [], cds: {} });
+    }
+  }
+
   if (isEditing) {
     if (!campaignsAPI.updateCharacterInfo) {
       characterError.textContent = "backend ainda não carregou, tente novamente em instantes.";
@@ -1194,7 +1342,7 @@ characterSubmit.addEventListener("click", async () => {
     characterSubmit.disabled = true;
     characterError.textContent = "salvando alterações...";
     try {
-      await campaignsAPI.updateCharacterInfo(currentCampaign.id, editingCharacter.id, { fullName, gender, strength, weakness, photoFile });
+      await campaignsAPI.updateCharacterInfo(currentCampaign.id, editingCharacter.id, { fullName, gender, strength, weakness, photoFile, extra: percyExtra });
       logEvent("✎", `<b>${escapeHtml(getCurrentHandle())}</b> editou a ficha de <b>${escapeHtml(fullName)}</b>.`);
       characterSubmit.disabled = false;
       closeCharacterModal();
@@ -1217,8 +1365,9 @@ characterSubmit.addEventListener("click", async () => {
     characterSubmit.disabled = true;
     characterError.textContent = "criando ficha...";
     try {
-      await campaignsAPI.createCharacter(currentCampaign.id, { fullName, gender, strength, weakness, photoFile, attrs });
-      logEvent("🆕", `<b>${escapeHtml(getCurrentHandle())}</b> criou a ficha de <b>${escapeHtml(fullName)}</b>.`);
+      await campaignsAPI.createCharacter(currentCampaign.id, { fullName, gender, strength, weakness, photoFile, attrs, extra: percyExtra });
+      const gd = percyExtra && percyExtra.percy ? godOf({ percy: percyExtra.percy }) : null;
+      logEvent("🆕", `<b>${escapeHtml(getCurrentHandle())}</b> criou a ficha de <b>${escapeHtml(fullName)}</b>${gd ? `, semideus filho(a) de <b>${escapeHtml(gd.n)}</b>` : ""}.`);
       characterSubmit.disabled = false;
       closeCharacterModal();
     } catch (err) {
@@ -1234,13 +1383,27 @@ characterSubmit.addEventListener("click", async () => {
 // ------------------------------------------------------------
 let itemModalCharacter = null;
 
+let itemFieldsCtl = null;
+function syncItemFields(){
+  if (!itemFieldsCtl) return;
+  itemFieldsCtl.show(isPercy(currentCampaign) ? (itemPreset.value || itemCategory.value) : "");
+}
 function openItemModal(character){
   itemModalCharacter = character;
+  if (!itemFieldsCtl) {
+    const host = document.createElement("div");
+    host.id = "itemPercyFields";
+    itemCategoryBlock.insertAdjacentElement("afterend", host);
+    itemFieldsCtl = mountItemFields(host);
+    itemCategory.addEventListener("change", syncItemFields);
+    itemPreset.addEventListener("change", syncItemFields);
+  }
   itemName.value = "";
   itemDescription.value = "";
   populateItemCategories();
   populateItemPresets();
-  itemCategory.value = "alimento";
+  itemCategory.value = isPercy(currentCampaign) ? "arma" : "alimento";
+  syncItemFields();
   itemQuantity.value = "1";
   itemError.textContent = "";
   itemModal.classList.remove("hidden");
@@ -1282,9 +1445,15 @@ itemSubmit.addEventListener("click", async () => {
     }
   }
 
+  let percyExtra = {};
+  if (isPercy(currentCampaign)) {
+    const r = itemFieldsCtl.read(category);
+    if (r.error) { itemError.textContent = r.error; return; }
+    percyExtra = r.extra || {};
+  }
   const newItem = {
     id: `i_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    name, description, category, quantity
+    name, description, category, quantity, ...percyExtra
   };
   const newItems = [...(itemModalCharacter.items || []), newItem];
 
@@ -1473,6 +1642,7 @@ function renderCharacterCard(character){
   const canTransferItems = isCampaignCreator || isCharCreator; // narrador ou dono da ficha podem enviar/usar itens
   const canEditHungerThirst = isCampaignCreator; // só o narrador ajusta fome/sede manualmente
   const hungerThirstOn = !!(currentCampaign && currentCampaign.hungerThirstEnabled);
+  const percyOn = isPercy(currentCampaign);
 
   const maxDmg = maxDamageOf(character);
   const damage = clampDamage(character.damage || 0, maxDmg);
@@ -1501,7 +1671,9 @@ function renderCharacterCard(character){
   const isExpanded = expandedCharacterIds.has(character.id);
 
   const card = document.createElement("div");
-  card.className = "character-card" + (dead ? " is-dead" : "") + (insane && !dead ? " is-insane" : "");
+  card.className = "character-card" + (dead ? " is-dead" : "") + (insane && !dead ? " is-insane" : "") + (percyOn ? " percy" : "");
+  const pGod = percyOn ? godOf(character) : null;
+  if (pGod) card.style.setProperty("--god", pGod.color);
 
   const vigor = attrValue(character, "vigor");
   const attrVals = ATTRS.map((a) => attrValue(character, a.key));
@@ -1578,7 +1750,7 @@ function renderCharacterCard(character){
           <div class="attr-chips">${ATTRS.map((a, i) => {
             const v = attrVals[i];
             const top = !attrAllEqual && attrTop > 0 && v === attrTop ? " peak" : "";
-            const inner = `<span class="attr-ico">${icon(a.key)}</span><span class="attr-label"><span class="full">${a.label}</span><span class="abbr" aria-hidden="true">${a.label.slice(0, 3)}</span></span><b class="attr-num">${v}</b>${attrPips(v)}`;
+            const inner = `<span class="attr-ico">${icon(a.key)}</span><span class="attr-label"><span class="full">${a.label}</span><span class="abbr" aria-hidden="true">${a.label.slice(0, 3)}</span></span><b class="attr-num">${v}</b>${percyOn ? attrBadge(character, a.key) : ""}${attrPips(v)}`;
             return (canRollAttrs && d20On)
               ? `<button type="button" class="attr-chip clickable${top} ${menuAttr === a.key ? "active" : ""}" data-action="attr-roll" data-attr="${a.key}" aria-label="${a.label} ${v}" title="${escapeHtml(a.desc)} — clique para rolar">${inner}<span class="attr-hint">rolar</span></button>`
               : `<span class="attr-chip${top}" aria-label="${a.label} ${v}" title="${escapeHtml(a.desc)}">${inner}</span>`;
@@ -1614,7 +1786,7 @@ function renderCharacterCard(character){
         </section>
       ` : ""}
 
-      ${hungerThirstOn ? `
+      ${hungerThirstOn && !percyOn ? `
         <section class="sheet-section">
           ${sectionTitle("utensils", "necessidades")}
           <div class="ht-block">
@@ -1646,9 +1818,11 @@ function renderCharacterCard(character){
         </section>
       ` : ""}
 
+      ${percyOn ? percySections(character) : ""}
+
       <section class="sheet-section">
-        ${sectionTitle("user", "perfil")}
-        <div class="character-traits">
+        ${sectionTitle("user", percyOn ? "ferimentos" : "perfil")}
+        ${percyOn ? "" : `<div class="character-traits">
           <div class="trait-chip trait-strength">
             <span class="trait-chip-label">${icon("shield")} ponto forte</span>
             <span class="trait-chip-value">${escapeHtml(character.strength || "—")}</span>
@@ -1657,7 +1831,7 @@ function renderCharacterCard(character){
             <span class="trait-chip-label">${icon("skull")} ponto fraco</span>
             <span class="trait-chip-value">${escapeHtml(character.weakness || "—")}</span>
           </div>
-        </div>
+        </div>`}
         <div class="injuries-box">
           <span class="injuries-label">ferimentos e limitações</span>
           <textarea class="injuries-textarea" data-char-id="${character.id}" ${canEditInjuries ? "" : "disabled"} placeholder="${canEditInjuries ? "descreva ferimentos, sequelas, limitações..." : "somente o narrador ou quem criou a ficha pode editar."}">${escapeHtml(character.injuries || "")}</textarea>
@@ -1683,8 +1857,10 @@ function renderCharacterCard(character){
                   <span class="item-qty">x${item.quantity}</span>
                 </div>
                 ${item.description ? `<span class="item-desc">${escapeHtml(item.description)}</span>` : ""}
+                ${percyOn ? itemMeta(item) : ""}
               </div>
               <div class="item-actions">
+                ${percyOn ? itemActions(item, character) : ""}
                 ${(herbsOn && canTransferItems && HERBS[item.category])
                   ? `<button class="btn-mini" data-action="item-herb" data-item-id="${item.id}" ${(item.quantity > 0 && herbUsable(item.category, damage, bleedNow, sanity)) ? "" : "disabled"}>usar</button>`
                   : ""}
@@ -1737,6 +1913,7 @@ function renderCharacterCard(character){
                 </div>
               </div>
             ` : ""}
+            ${percyOn ? percyControls(character) : ""}
             ${(bleedingOn && !dead && !bleedNow) ? `
               <div class="damage-tool">
                 <span class="damage-tool-label">sangramento</span>
@@ -2031,6 +2208,7 @@ function renderCharacterCard(character){
     });
   }
 
+  if (percyOn) bindPercyCard(card, character);
   return card;
 }
 
@@ -2051,8 +2229,10 @@ function herbUsable(category, damage, bleedNow, sanity){
 
 function populateItemCategories(){
   // ervas não são categorias: aparecem como "item pronto" (ver populateItemPresets)
+  const percyOn = isPercy(currentCampaign);
   itemCategory.innerHTML = Object.entries(ITEM_CATEGORIES)
     .filter(([key]) => !HERBS[key])
+    .filter(([key]) => percyOn ? !["alimento", "bebida"].includes(key) : !["armadura", "escudo", "magico"].includes(key))
     .map(([key, c]) => `<option value="${key}">${c.icon} ${c.label}</option>`).join("");
 }
 
@@ -2249,13 +2429,14 @@ function renderRulesPanel(campaign){
   const sanityOn = !!campaign.sanityEnabled, bleedOn = !!campaign.bleedingEnabled, herbsOn = !!campaign.herbsEnabled;
   const htOn = !!campaign.hungerThirstEnabled;
   const d20 = campaign.diceSystem === "d20";
+  const percyRule = !!campaign.percyEnabled && d20;
 
-  if (!isNarrator && !sanityOn && !bleedOn && !herbsOn && !htOn && !d20) {
+  if (!isNarrator && !sanityOn && !bleedOn && !herbsOn && !htOn && !d20 && !percyRule) {
     rulesPanelEl.hidden = true; rulesPanelEl.innerHTML = "";
     return;
   }
 
-  const summary = [d20 ? "D20" : "D6", htOn && "fome/sede", sanityOn && "sanidade", bleedOn && "sangramento", herbsOn && "ervas"].filter(Boolean).join(" · ");
+  const summary = [d20 ? "D20" : "D6", percyRule && "Percy Jackson", htOn && "fome/sede", sanityOn && "sanidade", bleedOn && "sangramento", herbsOn && "ervas"].filter(Boolean).join(" · ");
 
   const row = (key, on, label, desc, disabled) => `
     <div class="rule-row">
@@ -2297,6 +2478,7 @@ function renderRulesPanel(campaign){
       ${row("sanity", sanityOn, "🌀 sanidade", "Ao chegar em 100% o personagem fica insano: perde o juízo, não luta direito, pode ferir os colegas e chama atenção.", false)}
       ${row("bleeding", bleedOn, "🩸 sangramento", "Estados ligados ao dano: Normal (até 50%), Mancando (51–80%) e No Chão (81–99%). O narrador pode marcar um personagem como Sangrando: 5% de dano a cada 10 min durante 1 hora (30% no total).", false)}
       ${row("herbs", herbsOn, "🌿 ervas", "Exige sanidade ou sangramento ativos. Itens prontos: 🌿 Verde restaura vida, mas não para o sangramento · 🌺 Vermelha para o sangramento · 🫐 Azul restaura 20% de sanidade · podem ser misturadas 2 ou 3 de cores diferentes (+25% de eficiência com 2, +35% com 3) — narrador ou dono da ficha.", !(sanityOn || bleedOn) && !herbsOn)}
+      ${row("percy", percyRule, "🏛️ sistema Percy Jackson", "Fichas de semideuses: parente divino (16 deuses), poderes, presente divino, soco, armas e armaduras, dracmas e ataques com alvo. Exige D20. <b>Muda todas as fichas da campanha</b> (ponto forte/fraco viram personalidade; alimento e bebida saem do inventário).", !d20)}
       <p class="rules-error" id="htError"></p>
     </div>`;
 
@@ -2324,6 +2506,10 @@ function renderRulesPanel(campaign){
       if (key === "sanity") { patch.sanityEnabled = !sanityOn; label = "sanidade"; if (!patch.sanityEnabled && !bleedOn) patch.herbsEnabled = false; }
       if (key === "bleeding") { patch.bleedingEnabled = !bleedOn; label = "sangramento"; if (!patch.bleedingEnabled && !sanityOn) patch.herbsEnabled = false; }
       if (key === "herbs") { patch.herbsEnabled = !herbsOn; label = "ervas"; }
+      if (key === "percy") {
+        if (!percyRule && !confirm("Ativar o sistema Percy Jackson?\n\nIsso muda TODAS as fichas da campanha: ponto forte/fraco viram personalidade, cada semideus passa a ter parente divino, poderes, presente divino, soco e dracmas, e alimento/bebida saem do inventário.\n\nFichas já existentes precisam que o dono escolha o parente divino (botão ✎ na ficha).")) return;
+        patch.percyEnabled = !percyRule; label = "Percy Jackson (semideuses)";
+      }
       const turnedOn = Object.values(patch)[0];
       btn.disabled = true;
       try {
@@ -2340,7 +2526,7 @@ function renderRulesPanel(campaign){
   const diceSel = rulesPanelEl.querySelector("[data-rule-dice]");
   if (diceSel) diceSel.addEventListener("change", async () => {
     try {
-      await campaignsAPI.patchCampaign(campaign.id, { diceSystem: diceSel.value });
+      await campaignsAPI.patchCampaign(campaign.id, diceSel.value === "d20" ? { diceSystem: "d20" } : { diceSystem: diceSel.value, percyEnabled: false });
       logEvent("⚙️", `<b>${escapeHtml(getCurrentHandle())}</b> mudou o sistema de dados da campanha para <b>${diceSel.value === "d20" ? "D20 + atributos" : "D6"}</b>.`);
     } catch (err) {
       console.error("Falha ao mudar o sistema de dados:", err);
@@ -2483,7 +2669,7 @@ async function rollAttributeFromSheet(character, attrKey, testKey, cardEl){
   if (!handle) return;
 
   const fresh = lastCharacterList.find((c) => c.id === character.id) || character;
-  const final = rollD20(attrKey, attrValue(fresh, attrKey), testKey, Math.random, disadvantageFor(fresh));
+  const final = rollD20(attrKey, attrValue(fresh, attrKey) + attrBonusOf(fresh, attrKey), testKey, Math.random, disadvantageFor(fresh));
 
   attrMenu = null;
   if (cardEl) { const m = cardEl.querySelector(".attr-roll-menu"); if (m) m.remove(); }
@@ -2635,3 +2821,20 @@ function disadvantageFor(character){
   const st = bodyState(Math.round(character.damage || 0), character);
   return (st.key === "mancando" || st.key === "chao") ? st.label : false;
 }
+
+
+// ------------------------------------------------------------
+// sistema Percy Jackson: liga o módulo ao restante do site
+// ------------------------------------------------------------
+initPercy({
+  campaign: () => currentCampaign,
+  characters: () => lastCharacterList,
+  api: campaignsAPI,
+  log: (icon, text) => logEvent(icon, text),
+  handle: () => getCurrentHandle(),
+  isNarrator: () => !!currentCampaign && isCurrentUserCampaignCreator(currentCampaign),
+  isMine: (character) => isMineForNotify(character),
+  refresh: () => applyCharacterFilter(),
+  describeError,
+  disadv: (character) => disadvantageFor(character),
+});

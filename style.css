@@ -2701,3 +2701,153 @@ body::after{
 @media (max-width: 640px){
   .character-grid{ grid-template-columns:minmax(0, 1fr); }
 }
+
+
+/* ============================================================
+   SISTEMA PERCY JACKSON — tema grego (dourado, mármore e a cor de cada deus)
+   ============================================================ */
+:root{ --gold:#d4af37; --gold-soft:#e8d48a; --marble:#ece6d6; }
+
+.character-card.percy{
+  --god:var(--gold);
+  border-color:color-mix(in srgb, var(--god) 38%, var(--line));
+}
+.character-card.percy::before{ background:linear-gradient(90deg, transparent, var(--god), transparent); }
+.character-card.percy .section-title{ color:var(--god); font-family:"Cinzel","Trajan Pro","Palatino Linotype",Georgia,serif; letter-spacing:0.14em; }
+.character-card.percy .section-title::before{ color:color-mix(in srgb, var(--god) 55%, transparent); }
+
+/* faixa de meandro grego sob o cabeçalho da ficha aberta */
+.character-card.percy.is-open .character-card-head{
+  border-bottom:0;
+  background-image:
+    repeating-linear-gradient(90deg, color-mix(in srgb, var(--god) 55%, transparent) 0 6px, transparent 6px 12px),
+    repeating-linear-gradient(90deg, transparent 0 6px, color-mix(in srgb, var(--god) 35%, transparent) 6px 12px);
+  background-size:100% 2px, 100% 2px;
+  background-position:0 100%, 0 calc(100% - 4px);
+  background-repeat:no-repeat;
+}
+
+/* parente divino */
+.pz-god{ display:flex; align-items:center; gap:12px; }
+.pz-medal{
+  width:46px; height:46px; flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  font-size:24px; border-radius:50%;
+  border:2px solid var(--god, var(--gold));
+  background:radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--god, var(--gold)) 35%, #000), #0a0a0a 75%);
+  box-shadow:0 0 14px color-mix(in srgb, var(--god, var(--gold)) 45%, transparent), inset 0 0 8px rgba(0,0,0,.6);
+}
+.pz-god-name{ display:block; font-family:"Cinzel","Palatino Linotype",Georgia,serif; font-size:20px; color:var(--god, var(--gold)); letter-spacing:0.08em; }
+.pz-god small{ display:block; color:var(--mute); font-size:12px; }
+.pz-personality{ border-left:3px solid var(--god, var(--gold)); padding:6px 10px; background:var(--black-2); }
+.pz-personality p{ margin:4px 0 0; font-style:italic; color:var(--marble); }
+.pz-empty{ color:var(--mute); font-size:13px; margin:0; }
+.pz-hint{ color:var(--mute); font-size:12px; }
+
+/* cartões de poder / presente */
+.pz-cards{ display:flex; flex-direction:column; gap:10px; }
+.pz-card{
+  position:relative; padding:10px 12px 12px;
+  background:linear-gradient(180deg, color-mix(in srgb, var(--god, var(--gold)) 9%, var(--black)), var(--black) 70%);
+  border:1px solid color-mix(in srgb, var(--god, var(--gold)) 35%, var(--line));
+}
+.pz-card.kind-ultimate{ border-color:var(--god, var(--gold)); box-shadow:0 0 16px color-mix(in srgb, var(--god, var(--gold)) 22%, transparent); }
+.pz-card.kind-presente{ border-style:dashed; }
+.pz-card header{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.pz-name{ font-family:"Cinzel","Palatino Linotype",Georgia,serif; font-size:16px; color:var(--marble); letter-spacing:0.04em; }
+.pz-kind{ font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--god, var(--gold)); white-space:nowrap; }
+.pz-tags{ display:block; font-size:11.5px; color:var(--mute); margin:1px 0 6px; }
+.pz-desc{ margin:0 0 6px; font-size:13px; color:var(--off); line-height:1.45; }
+.pz-fx summary{ cursor:pointer; font-size:12px; color:var(--god, var(--gold)); }
+.pz-fx ul{ margin:6px 0 4px; padding-left:18px; font-size:12.5px; color:var(--off); line-height:1.5; }
+.pz-pool{ display:block; font-size:11.5px; color:var(--hunger); margin:4px 0; }
+.pz-acts{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.pz-act-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.pz-act{
+  display:inline-flex; align-items:center; gap:8px;
+  padding:8px 14px; font-family:var(--mono); font-size:13px; font-weight:700;
+  color:var(--black); background:var(--god, var(--gold)); border:1px solid var(--god, var(--gold));
+  cursor:pointer; transition:filter .15s, transform .1s;
+}
+.pz-act small{ font-weight:400; font-size:11px; opacity:.8; }
+.pz-act:hover:not(:disabled){ filter:brightness(1.15); transform:translateY(-1px); }
+.pz-act:disabled{ cursor:not-allowed; opacity:.45; }
+.pz-act.cooling{ background:transparent; color:var(--mute); border-color:var(--line); }
+.pz-cd{ font-size:12px; color:var(--hunger); font-variant-numeric:tabular-nums; }
+.pz-cd.manual{ color:var(--mute); }
+.pz-punch{ flex-direction:row; align-items:center; gap:12px; flex-wrap:wrap; }
+
+/* efeitos ativos */
+.pz-fx-list{ display:flex; flex-wrap:wrap; gap:6px; }
+.pz-fxchip{ display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px; border:1px solid var(--line); background:var(--black-2); }
+.pz-fxchip.good{ border-color:var(--ok-deep); color:var(--ok-soft); }
+.pz-fxchip.bad{ border-color:var(--red-deep); color:var(--red-bright); }
+.pz-fxchip em{ font-style:normal; font-variant-numeric:tabular-nums; opacity:.85; }
+.pz-fxchip .btn-mini{ padding:1px 6px; min-height:0; }
+.pz-mod{ font-size:11px; font-weight:700; margin-left:2px; }
+.pz-mod.up{ color:var(--ok); }
+.pz-mod.down{ color:var(--red-bright); }
+
+/* dracmas (caixa pequena) */
+.pz-drachmas{ flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:8px 12px; border:1px solid color-mix(in srgb, var(--gold) 40%, var(--line)); background:var(--black-2); }
+.pz-coin{ display:flex; align-items:center; gap:8px; }
+.pz-coin-ico{ font-size:18px; }
+.pz-coin-label{ font-size:12px; color:var(--gold-soft); letter-spacing:0.06em; text-transform:uppercase; }
+.pz-coin-n{ font-family:var(--disp); font-size:22px; color:var(--gold); }
+.pz-coin-edit{ display:flex; gap:6px; align-items:center; }
+.pz-coin-edit .damage-input{ width:80px; }
+
+/* itens */
+.pz-item-meta{ display:block; font-size:12px; color:var(--gold-soft); margin-top:2px; line-height:1.4; }
+.pz-use{ border-color:var(--gold); color:var(--gold); }
+
+/* modal de uso */
+.pz-modal .modal-card{ max-width:480px; }
+.pz-modal-title{ margin:0 0 6px; font-family:"Cinzel","Palatino Linotype",Georgia,serif; font-size:19px; color:var(--gold); }
+.pz-summary{ margin:0 0 10px; padding-left:18px; font-size:13px; color:var(--off); line-height:1.55; }
+.pz-opt{ display:flex; gap:8px; align-items:center; font-size:13px; margin:6px 0; }
+.pz-picker{ margin:8px 0; }
+.pz-pick-list{ display:flex; flex-direction:column; gap:4px; max-height:180px; overflow-y:auto; padding:6px; border:1px solid var(--line); background:var(--black-2); }
+.pz-pick{ display:flex; align-items:center; gap:8px; font-size:13px; cursor:pointer; }
+.pz-pick.dead{ opacity:.4; text-decoration:line-through; cursor:not-allowed; }
+.pz-result{ margin:10px 0; display:flex; flex-direction:column; gap:6px; }
+.pz-line{ font-size:13px; line-height:1.5; padding:6px 10px; border-left:3px solid var(--line); background:var(--black-2); }
+.pz-line.good{ border-left-color:var(--ok); }
+.pz-line.pz-test.ok{ border-left-color:var(--ok); }
+.pz-line.pz-test.fail{ border-left-color:var(--red-bright); }
+.pz-line.pz-test.crit{ border-left-color:var(--crit); color:var(--crit); box-shadow:0 0 14px rgba(255,210,74,.25); }
+.pz-queued{ color:var(--hunger); font-style:normal; }
+
+/* escolha do parente divino na criação da ficha */
+.pz-charblock{ margin:12px 0; }
+.pz-gods{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; margin:6px 0 10px; }
+.pz-godbtn{
+  display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 4px;
+  background:var(--black-2); border:1px solid var(--line); color:var(--off); cursor:pointer; font-family:var(--mono); font-size:12px;
+  transition:border-color .15s, box-shadow .15s, transform .1s;
+}
+.pz-godbtn .pz-medal{ width:38px; height:38px; font-size:20px; }
+.pz-godbtn:hover:not(:disabled){ border-color:var(--god); transform:translateY(-1px); }
+.pz-godbtn.on{ border-color:var(--god); box-shadow:0 0 16px color-mix(in srgb, var(--god) 50%, transparent); color:var(--god); }
+.pz-godbtn:disabled{ cursor:default; opacity:.55; }
+.pz-godbtn.on:disabled{ opacity:1; }
+.pz-godinfo{ padding:10px 12px; border:1px solid var(--god); background:color-mix(in srgb, var(--god) 8%, var(--black)); font-size:13px; }
+.pz-godinfo > b{ font-family:"Cinzel","Palatino Linotype",Georgia,serif; color:var(--god); font-size:17px; }
+.pz-godinfo small{ display:block; color:var(--mute); margin-bottom:6px; }
+.pz-godinfo ul{ margin:0 0 8px; padding-left:18px; line-height:1.5; }
+.pz-gifts{ display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+.pz-giftbtn{ text-align:left; display:flex; flex-direction:column; gap:2px; padding:8px 10px; background:var(--black); border:1px solid var(--line); color:var(--off); cursor:pointer; font-family:var(--mono); }
+.pz-giftbtn b{ color:var(--marble); font-size:13.5px; }
+.pz-giftbtn small{ margin:0; color:var(--mute); }
+.pz-giftbtn span{ font-size:12px; color:var(--off); }
+.pz-giftbtn em{ font-style:normal; font-size:12px; color:var(--hunger); }
+.pz-giftbtn:hover:not(:disabled){ border-color:var(--god); }
+.pz-giftbtn.on{ border-color:var(--god); box-shadow:0 0 12px color-mix(in srgb, var(--god) 45%, transparent); }
+.pz-giftbtn:disabled{ opacity:.45; cursor:not-allowed; }
+.pz-giftbtn.on:disabled{ opacity:1; cursor:default; }
+
+@media (max-width: 640px){
+  .pz-gods{ grid-template-columns:repeat(4, minmax(0, 1fr)); gap:6px; }
+  .pz-godbtn{ font-size:10.5px; padding:8px 2px; }
+  .pz-god-name{ font-size:18px; }
+}
