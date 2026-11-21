@@ -9,6 +9,7 @@ import { ATTRS, attrValue, D20_TESTS, d20Message, maxDamageOf } from "./rules.js
 import { GODS, GOD_BY_ID, godEntries, giftKey } from "./olympus-data.js";
 import * as EN from "./percy-engine.js";
 import { icon } from "./icons.js";
+import { playFx, fxEnabled, setFxEnabled } from "./percy-fx.js";
 
 let ctx = null;
 const inflight = new Set();
@@ -267,6 +268,7 @@ function openAction(character, kind, entryId, actId){
         ${(act.opt || []).map((o) => `<label class="pz-opt"><input type="checkbox" data-opt="${o.id}"> ${esc(o.l)}</label>`).join("")}
         ${act.foe ? pick("foe", "alvos (quem sofre)", act.foe, true, false) : ""}
         ${act.ally ? pick("ally", "aliados / quem recebe", act.ally, !!act.self, !!act.self) : ""}
+        <label class="pz-opt pz-fxopt"><input type="checkbox" data-pz-fx ${fxEnabled() ? "checked" : ""}> efeitos de tela e som</label>
         <p class="modal-error" data-pz-err></p>
         <div class="pz-result" data-pz-result></div>
         <button class="roll-btn" data-pz-go><span class="roll-btn-text">${act.note ? "USAR" : "ROLAR"}</span></button>
@@ -276,6 +278,7 @@ function openAction(character, kind, entryId, actId){
   m.innerHTML = html;
   m.classList.remove("hidden");
   m.querySelector("[data-pz-close]").addEventListener("click", closeModal);
+  m.querySelector("[data-pz-fx]").addEventListener("change", (e) => setFxEnabled(e.target.checked));
 
   // limite de seleção por lista
   m.querySelectorAll(".pz-pick-list").forEach((list) => {
@@ -321,6 +324,11 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   const now = Date.now();
   const plan = EN.planAction({ caster: character, foes, allies, entry, act, dcKey, opts, disadv: ctx.disadv(character), now });
   const who = `<b>${esc(character.fullName)}</b>`;
+
+  // efeitos de tela e som: um por deus; ultimate e 20 natural ocupam a tela inteira
+  const godFx = (kind === "comum" || kind === "ultimate" || kind === "presente") ? godOf(character) : null;
+  if (!plan.failed) playFx({ god: godFx, kind: kind === "ultimate" ? "ultimate" : "power", crit: plan.crit, title: entry.n });
+  else if (plan.crit) playFx({ crit: true });
   const rows = [];
   const logs = [];
 

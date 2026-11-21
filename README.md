@@ -280,6 +280,13 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 - **Ordem de defesa** ao receber dano: reduções por golpe (ex.: -5 em todo dano) → barreiras (ex.: Égide, absorve 15) → armaduras/escudos equipados (absorvem até o valor definido e perdem a mesma quantidade de durabilidade; chegando a zero **quebram**; o narrador pode reparar) → o resto vira dano na ficha.
 - **Custos**: poderes com custo (ex.: Ira do Olimpo, 15%) aplicam o dano ao próprio usuário. Se o custo mataria, a ficha fica em 1% do limite e ganha o efeito **Inconsciente**.
 
+**Efeitos de tela e som**
+
+- Ao usar um poder ou presente com sucesso, cada deus tem o seu efeito e o seu som, todos sintetizados (sem arquivos de áudio): raio e clarão no Zeus, onda e anéis d'água no Poseidon, escuridão se fechando no Hades, círculo de fogo violeta na Hécate, brotos e folhas na Deméter, cortes vermelhos no Ares, o sol no Apolo, o arco-íris varrendo a tela na Íris, redemoinho no Circe, brasas na Hefesto, pétalas na Afrodite, rastros de velocidade no Hermes, bolhas de vinho no Dionísio, feixe de luz na Atena, névoa e "z" no Hipnos e ondas oníricas no Morfeu.
+- **Ultimates** ocupam a tela inteira por cerca de 1,4 segundo, com o nome do poder em letras grandes, som mais grave e estrondo final (e a tela treme nos deuses mais "pesados").
+- **20 natural** ganha uma explosão dourada com "★ 20 NATURAL ★" e um arpejo cintilante; vale também para soco e armas.
+- Há uma caixa "efeitos de tela e som" na janela de uso para desligar; o som também respeita o botão de mudo do site. Com "movimento reduzido" ativado no sistema, os efeitos viram só um tom de cor discreto. Nenhum efeito pisca rápido demais (no máximo dois clarões, separados por mais de 300 ms).
+
 **Efeitos ativos, recargas e alvos**
 
 - Bônus, penalidades, barreiras e estados aparecem como **chips** na ficha, com tempo restante, número de ações ou de golpes. Modificadores de atributo entram nas rolagens e aparecem ao lado do atributo. O dono ou o narrador podem gastar uma ação (-1) ou remover um efeito.
@@ -287,7 +294,7 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 - Recargas em minutos têm contagem regressiva; "1x por combate" e "1x por dia" ficam marcados como usados até o dono ou o narrador clicar em ↺. O narrador tem "recarregar tudo" em *Controles do narrador*.
 - **Ataques entre fichas**: se você tem permissão na ficha-alvo (é o narrador ou o dono), o efeito é aplicado na hora. Se não, vai para a **fila de hits** (regra do Firestore acima) e é aplicado por quem tiver permissão assim que abrir a campanha.
 
-**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador) e `percy.js` (interface e integração).
+**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador), `percy.js` (interface e integração) e `percy-fx.js` (efeitos de tela; os sons ficam em `sound.js`).
 
 ## Como funciona a rolagem
 

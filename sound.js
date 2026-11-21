@@ -88,3 +88,137 @@ export function playDeathAlert(){
     osc.stop(t + len + 0.02);
   });
 }
+
+// ============================================================
+// SONS DO SISTEMA PERCY JACKSON — um timbre por deus, tudo sintetizado
+// ============================================================
+
+// rajada de ruído filtrado (trovão, água, vento, faíscas...)
+function noise(c, t, dur, { type = "bandpass", f = 1000, to = null, q = 1, g = 0.25, shape = "decay" } = {}){
+  const n = Math.floor(c.sampleRate * dur);
+  const buf = c.createBuffer(1, n, c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) {
+    const env = shape === "swell" ? Math.sin(Math.PI * i / n) : 1 - i / n;
+    d[i] = (Math.random() * 2 - 1) * env;
+  }
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const fl = c.createBiquadFilter();
+  fl.type = type;
+  fl.frequency.setValueAtTime(f, t);
+  if (to) fl.frequency.exponentialRampToValueAtTime(to, t + dur);
+  fl.Q.value = q;
+  const gn = c.createGain();
+  gn.gain.setValueAtTime(g, t);
+  gn.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(fl).connect(gn).connect(c.destination);
+  src.start(t);
+  src.stop(t + dur);
+}
+
+// nota simples com envelope (sinos, graves, drones)
+function tone(c, t, { type = "sine", f = 440, to = null, dur = 0.4, g = 0.15, delay = 0, vib = 0 } = {}){
+  const s = t + delay;
+  const o = c.createOscillator();
+  o.type = type;
+  o.frequency.setValueAtTime(f, s);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, s + dur);
+  const gn = c.createGain();
+  gn.gain.setValueAtTime(0.0001, s);
+  gn.gain.exponentialRampToValueAtTime(g, s + 0.02);
+  gn.gain.exponentialRampToValueAtTime(0.0001, s + dur);
+  if (vib) {
+    const lfo = c.createOscillator();
+    lfo.frequency.value = 6;
+    const lg = c.createGain();
+    lg.gain.value = vib;
+    lfo.connect(lg).connect(o.frequency);
+    lfo.start(s);
+    lfo.stop(s + dur + 0.05);
+  }
+  o.connect(gn).connect(c.destination);
+  o.start(s);
+  o.stop(s + dur + 0.05);
+}
+
+// famílias de som: (contexto, início, big 0|1 para ultimates, altura)
+const SFX = {
+  thunder(c, t, big){
+    noise(c, t, 0.7 + big * 0.5, { type: "lowpass", f: 2400, to: 120, g: 0.5 });
+    for (let i = 0; i < 5; i++) noise(c, t + i * 0.05, 0.04, { type: "highpass", f: 3000 + Math.random() * 3000, g: 0.3 });
+    tone(c, t, { type: "sawtooth", f: 70, to: 35, dur: 0.8 + big * 0.5, g: 0.2 });
+  },
+  water(c, t, big){
+    noise(c, t, 0.8 + big * 0.5, { f: 300, to: 1800, q: 0.8, g: 0.3, shape: "swell" });
+    [0, 0.12, 0.26].forEach((d, i) => tone(c, t, { f: 500 + i * 220, to: 900 + i * 260, dur: 0.14, g: 0.07, delay: d }));
+    tone(c, t, { f: 90, to: 60, dur: 0.9, g: 0.2 });
+  },
+  shadow(c, t, big){
+    tone(c, t, { type: "sawtooth", f: 140, to: 45, dur: 1 + big * 0.6, g: 0.12 });
+    tone(c, t, { f: 60, to: 30, dur: 1.1 + big * 0.6, g: 0.28 });
+    noise(c, t, 0.9, { type: "lowpass", f: 500, to: 80, g: 0.2, shape: "swell" });
+  },
+  arcane(c, t, big, p = 1){
+    [1, 1.25, 1.5, 2].forEach((r, i) => tone(c, t, { type: "triangle", f: 300 * p * r, to: 330 * p * r, dur: 0.7 + big * 0.4, g: 0.07, delay: i * 0.07, vib: 4 }));
+    noise(c, t, 0.5, { type: "highpass", f: 4000, g: 0.08, shape: "swell" });
+  },
+  nature(c, t){
+    noise(c, t, 0.7, { f: 2500, to: 900, q: 0.7, g: 0.18, shape: "swell" });
+    [0, 0.1, 0.2].forEach((d, i) => tone(c, t, { type: "triangle", f: 330 * (1 + i * 0.25), dur: 0.2, g: 0.1, delay: d }));
+    tone(c, t, { f: 110, dur: 0.7, g: 0.15 });
+  },
+  war(c, t, big){
+    noise(c, t, 0.12, { type: "highpass", f: 1500, g: 0.5 });
+    tone(c, t, { type: "square", f: 180, to: 90, dur: 0.25, g: 0.16 });
+    tone(c, t, { f: 55, to: 35, dur: 0.5 + big * 0.4, g: 0.35 });
+    noise(c, t + 0.02, 0.5, { f: 900, q: 4, g: 0.1 });
+  },
+  forge(c, t, big){
+    tone(c, t, { type: "square", f: 420, to: 400, dur: 0.5 + big * 0.3, g: 0.09 });
+    tone(c, t, { type: "square", f: 630, dur: 0.45, g: 0.05 });
+    noise(c, t, 0.08, { type: "highpass", f: 2500, g: 0.45 });
+    noise(c, t + 0.05, 0.7, { type: "highpass", f: 5000, g: 0.1, shape: "swell" });
+    tone(c, t, { f: 70, to: 45, dur: 0.5, g: 0.3 });
+  },
+  chime(c, t, big, p = 1){
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone(c, t, { f: f * p, dur: 0.55 + big * 0.3, g: 0.09, delay: i * 0.08 }));
+  },
+  wind(c, t, big){
+    noise(c, t, 0.55 + big * 0.3, { f: 500, to: 4500, q: 1.2, g: 0.3, shape: "swell" });
+    tone(c, t, { f: 700, to: 1400, dur: 0.3, g: 0.05 });
+  },
+  dream(c, t, big, p = 1){
+    [196, 247, 294].forEach((f, i) => tone(c, t, { f: f * p, to: f * p * 0.97, dur: 1 + big * 0.5, g: 0.08, delay: i * 0.1, vib: 3 }));
+    noise(c, t, 1, { type: "lowpass", f: 900, to: 200, g: 0.1, shape: "swell" });
+  },
+};
+
+const GOD_SFX = {
+  zeus: ["thunder"], poseidon: ["water"], hades: ["shadow"], hecate: ["arcane", 1], demeter: ["nature"], ares: ["war"],
+  apolo: ["chime", 1], iris: ["chime", 1.5], circe: ["arcane", 1.35], hefesto: ["forge"], afrodite: ["chime", 0.8],
+  hermes: ["wind"], dionisio: ["nature"], atena: ["chime", 0.66], hipnos: ["dream", 0.8], morfeu: ["dream", 1.25],
+};
+
+// som do poder de um deus; big = ultimate (mais grave e longo, com um estrondo no fim)
+export function playGodSfx(godId, big = false){
+  if (muted) return;
+  const c = ctx();
+  const now = c.currentTime;
+  const [fam, pitch] = GOD_SFX[godId] || ["chime", 1];
+  SFX[fam](c, now, big ? 1 : 0, pitch || 1);
+  if (big) {
+    tone(c, now + 0.05, { f: 50, to: 26, dur: 1.2, g: 0.35 });
+    noise(c, now, 1, { type: "lowpass", f: 700, to: 60, g: 0.18, shape: "swell" });
+  }
+}
+
+// 20 natural: arpejo cintilante subindo + batida grave
+export function playCritSfx(){
+  if (muted) return;
+  const c = ctx();
+  const now = c.currentTime;
+  [660, 880, 1175, 1568, 2093].forEach((f, i) => tone(c, now, { f, dur: 0.35, g: 0.1, delay: i * 0.06 }));
+  tone(c, now, { f: 120, to: 55, dur: 0.4, g: 0.3 });
+  noise(c, now + 0.28, 0.5, { type: "highpass", f: 6000, g: 0.08, shape: "swell" });
+}
