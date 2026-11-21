@@ -280,6 +280,10 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 - **Ordem de defesa** ao receber dano: reduções por golpe (ex.: -5 em todo dano) → barreiras (ex.: Égide, absorve 15) → armaduras/escudos equipados (absorvem até o valor definido e perdem a mesma quantidade de durabilidade; chegando a zero **quebram**; o narrador pode reparar) → o resto vira dano na ficha.
 - **Custos**: poderes com custo (ex.: Ira do Olimpo, 15%) aplicam o dano ao próprio usuário. Se o custo mataria, a ficha fica em 1% do limite e ganha o efeito **Inconsciente**.
 
+**Frases de invocação**
+
+- Cada uma das 148 ações de poderes e presentes tem uma **frase de narração** própria (ex.: Ira do Olimpo: "As nuvens se fecham sobre o acampamento..."). Ela aparece em itálico no **histórico da campanha**, logo abaixo da linha com os números, e no topo da janela de resultado. Soco, armas e objetos mágicos têm frases genéricas (com o nome do item), há frases para quando o teste falha e um complemento extra quando sai 20 natural. As frases ficam em `olympus-lines.js`, uma por `deus:poder:ação`, fáceis de editar.
+
 **Efeitos de tela e som**
 
 - Ao usar um poder ou presente com sucesso, cada deus tem o seu efeito e o seu som, todos sintetizados (sem arquivos de áudio): raio e clarão no Zeus, onda e anéis d'água no Poseidon, escuridão se fechando no Hades, círculo de fogo violeta na Hécate, brotos e folhas na Deméter, cortes vermelhos no Ares, o sol no Apolo, o arco-íris varrendo a tela na Íris, redemoinho no Circe, brasas na Hefesto, pétalas na Afrodite, rastros de velocidade no Hermes, bolhas de vinho no Dionísio, feixe de luz na Atena, névoa e "z" no Hipnos e ondas oníricas no Morfeu.
@@ -294,7 +298,7 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 - Recargas em minutos têm contagem regressiva; "1x por combate" e "1x por dia" ficam marcados como usados até o dono ou o narrador clicar em ↺. O narrador tem "recarregar tudo" em *Controles do narrador*.
 - **Ataques entre fichas**: se você tem permissão na ficha-alvo (é o narrador ou o dono), o efeito é aplicado na hora. Se não, vai para a **fila de hits** (regra do Firestore acima) e é aplicado por quem tiver permissão assim que abrir a campanha.
 
-**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador), `percy.js` (interface e integração) e `percy-fx.js` (efeitos de tela; os sons ficam em `sound.js`).
+**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador), `percy.js` (interface e integração) e `percy-fx.js` (efeitos de tela; os sons ficam em `sound.js`) e `olympus-lines.js` (frases de invocação).
 
 ## Como funciona a rolagem
 

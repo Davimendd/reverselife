@@ -7,11 +7,11 @@
 // rolagens em tempo real ou dados das campanhas.
 //
 // Ao publicar uma nova versão do site, aumente o número em
-// CACHE_NAME (ex: "reverse-life-v15") pra forçar os navegadores
+// CACHE_NAME (ex: "reverse-life-v16") pra forçar os navegadores
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v14";
+const CACHE_NAME = "reverse-life-v15";
 
 const APP_SHELL = [
   "./",
@@ -26,6 +26,7 @@ const APP_SHELL = [
   "./rules.js",
   "./icons.js",
   "./olympus-data.js",
+  "./olympus-lines.js",
   "./percy-engine.js",
   "./percy.js",
   "./percy-fx.js",

@@ -10,6 +10,7 @@ import { GODS, GOD_BY_ID, godEntries, giftKey } from "./olympus-data.js";
 import * as EN from "./percy-engine.js";
 import { icon } from "./icons.js";
 import { playFx, fxEnabled, setFxEnabled } from "./percy-fx.js";
+import { lineFor, randomLine, PUNCH_LINES, WEAPON_LINES, MAGIC_ITEM_LINES, FAIL_LINES, CRIT_LINES } from "./olympus-lines.js";
 
 let ctx = null;
 const inflight = new Set();
@@ -332,9 +333,22 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   const rows = [];
   const logs = [];
 
+  // frase de invocação: uma linha de narração para o histórico e para o resultado
+  let narr = "";
+  const godN = godOf(character);
+  if (plan.failed) narr = randomLine(FAIL_LINES);
+  else if (kind === "punch") narr = randomLine(PUNCH_LINES);
+  else if (kind === "item") {
+    const it = (character.items || []).find((i) => `item:${i.id}` === entry.id);
+    narr = randomLine(it && it.atk ? WEAPON_LINES(entry.n, it.atk.range === "ranged") : MAGIC_ITEM_LINES(entry.n));
+  } else if (godN) narr = lineFor(godN.id, entry.id, act.id) || entry.d || "";
+  if (plan.crit && !plan.failed) narr = `${narr} ${randomLine(CRIT_LINES)}`.trim();
+  const narrHtml = narr ? `<span class="pz-narr">“${esc(narr)}”</span>` : "";
+  if (narr) rows.push(`<div class="pz-narr-line">“${esc(narr)}”</div>`);
+
   if (plan.test) rows.push(`<div class="pz-line pz-test ${plan.failed ? "fail" : "ok"}${plan.crit ? " crit" : ""}">${plan.crit ? "★ 20 NATURAL — " : (plan.test.die === 1 ? "1 natural — " : "")}${esc(d20Message(plan.test))}</div>`);
   if (plan.contest != null) rows.push(`<div class="pz-line">Seu total para a contestação: <b>${plan.contest}</b></div>`);
-  if (plan.failed) logs.push(`🎲 ${who} tentou <b>${esc(entry.n)}</b> (${esc(act.l)}), mas o teste falhou.`);
+  if (plan.failed) logs.push(`🎲 ${who} tentou <b>${esc(entry.n)}</b> (${esc(act.l)}), mas o teste falhou.${narrHtml ? `<br>${narrHtml}` : ""}`);
 
   // 1) alvos
   for (const t of plan.targets) {
@@ -379,7 +393,7 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
     if (act.note) rows.push(`<div class="pz-line">Efeito narrativo: o narrador resolve conforme a descrição do poder.</div>`);
     if (!plan.targets.length && !selfFx.length && !act.note) rows.push(`<div class="pz-line">Registrado.</div>`);
   }
-  if (!plan.failed) logs.unshift(`${kind === "ultimate" ? "⚡" : kind === "presente" ? "🎁" : "✨"} ${who} usou <b>${esc(entry.n)}</b> — ${esc(act.l)}${plan.test ? ` (${esc(d20Message(plan.test))}${plan.crit ? " ★ 20 natural" : ""})` : ""}${selfMsg}.`);
+  if (!plan.failed) logs.unshift(`${kind === "ultimate" ? "⚡" : kind === "presente" ? "🎁" : "✨"} ${who} usou <b>${esc(entry.n)}</b> — ${esc(act.l)}${plan.test ? ` (${esc(d20Message(plan.test))}${plan.crit ? " ★ 20 natural" : ""})` : ""}${selfMsg}.${narrHtml ? `<br>${narrHtml}` : ""}`);
   logs.forEach((l) => { const m = l.match(/^(\S+)\s+([\s\S]*)$/); ctx.log(m ? m[1] : "🎲", m ? m[2] : l); });
   return rows.join("");
 }
