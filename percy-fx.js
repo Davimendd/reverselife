@@ -44,9 +44,9 @@ function bolts(big){
 }
 
 // kind: "power" | "ultimate"; god: objeto do deus (ou null); crit: 20 natural; title: nome do poder
-export function playFx({ god = null, kind = "power", crit = false, title = "" } = {}){
+export function playFx({ god = null, kind = "power", crit = false, title = "", monster = false } = {}){
   if (!fxEnabled()) return;
-  const g = god && (GOD_BY_ID[god.id || god] || god);
+  const g = monster ? GOD_BY_ID.ares : (god && (GOD_BY_ID[god.id || god] || god));
   const big = kind === "ultimate";
   if (!g && !crit) return;
 

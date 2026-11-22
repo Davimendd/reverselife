@@ -119,6 +119,12 @@ export function resolveIncoming(char, amount, now = Date.now(), rng = Math.rando
   if (left <= 0) return { final: 0, fx, items, steps };
   const live = (f) => !(f.until && f.until <= now);
 
+  // 0) couraça natural (monstros): reduz um valor fixo de cada golpe
+  if (char.armor > 0 && left > 0) {
+    const cut = Math.min(left, char.armor);
+    left -= cut;
+    steps.push(`couraça: -${cut}`);
+  }
   // 1) redução por golpe (dr)
   fx.forEach((f) => {
     if (!live(f) || f.dr == null || left <= 0) return;

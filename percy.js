@@ -10,7 +10,7 @@ import { GODS, GOD_BY_ID, godEntries, giftKey } from "./olympus-data.js";
 import * as EN from "./percy-engine.js";
 import { icon } from "./icons.js";
 import { playFx, fxEnabled, setFxEnabled } from "./percy-fx.js";
-import { lineFor, randomLine, PUNCH_LINES, WEAPON_LINES, MAGIC_ITEM_LINES, FAIL_LINES, CRIT_LINES } from "./olympus-lines.js";
+import { lineFor, randomLine, PUNCH_LINES, WEAPON_LINES, MAGIC_ITEM_LINES, MONSTER_LINES, FAIL_LINES, CRIT_LINES } from "./olympus-lines.js";
 
 let ctx = null;
 const inflight = new Set();
@@ -19,13 +19,18 @@ export const isPercy = (campaign) => !!(campaign && campaign.percyEnabled && cam
 export const godOf = (c) => (c && c.percy && GOD_BY_ID[c.percy.god]) || null;
 export { EN };
 
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const fmtMs = (ms) => {
+export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+export const fmtMs = (ms) => {
   const s = Math.max(0, Math.ceil(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
   return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}:${String(r).padStart(2, "0")}`;
 };
-const canWrite = (ch) => ctx.isNarrator() || ctx.isMine(ch);
-const fresh = (ch) => ctx.characters().find((c) => c.id === ch.id) || ch;
+// alvos possíveis: fichas da campanha + monstros do bestiário (o jogador só vê os revelados)
+const monstersNow = () => (ctx.monsters ? ctx.monsters() : []);
+const allTargets = () => [...ctx.characters(), ...monstersNow()];
+const canWrite = (ch) => (ch.isMonster ? ctx.isNarrator() : (ctx.isNarrator() || ctx.isMine(ch)));
+const fresh = (ch) => allTargets().find((c) => c.id === ch.id) || ch;
+const kindOf = (c) => (c && c.isMonster ? "monster" : undefined);
+const mutateT = (c, fn) => ctx.api.mutateCharacter(ctx.campaign().id, c.id, fn, kindOf(c));
 const isDead = (c) => (c.damage || 0) >= maxDamageOf(c);
 
 export function initPercy(c){
@@ -62,7 +67,7 @@ function entryCard(character, kind, entry, writable, now){
   </article>`;
 }
 
-function fxChips(character, writable, now){
+export function fxChips(character, writable, now){
   const list = EN.liveFx(character, now);
   if (!list.length) return "";
   return `<div class="pz-fx-list">${list.map((f) => {
@@ -213,7 +218,26 @@ function ensureModal(){
 }
 const closeModal = () => { if (modalEl) { modalEl.classList.add("hidden"); modalEl.innerHTML = ""; } };
 
+export function monsterAct(atk){
+  const act = { id: atk.id, l: atk.name, t: atk.attr || "forca", foe: atk.targets || 1 };
+  if (atk.dmg) { act.dmg = atk.dmg; act[atk.range === "ranged" ? "ranged" : "melee"] = true; }
+  if (atk.rs) act.rs = { a: atk.rs, vs: "dc" };
+  if (atk.fx && atk.fx.l) {
+    const f = atk.fx;
+    act.ap = [{ l: f.l, bad: 1, ...(f.min ? { min: f.min } : {}), ...(f.acts ? { acts: f.acts } : {}), ...(f.m ? { m: f.m } : {}) }];
+  }
+  if (!atk.dmg && !(atk.fx && atk.fx.l)) act.note = true;
+  return act;
+}
+
 function resolveAction(character, kind, entryId, actId){
+  if (kind === "mon") {
+    const atk = (character.attacks || []).find((a) => a.id === actId);
+    if (!atk) return null;
+    const act = monsterAct(atk);
+    act.l = "ataque";
+    return { entry: { id: `mon:${character.id}`, n: atk.name, tags: "Monstro", d: "", fx: [], acts: [act] }, act, label: atk.name };
+  }
   if (kind === "punch") return { entry: { id: "punch", n: "Soco", tags: "Combate", d: "", fx: [], acts: [EN.PUNCH] }, act: EN.PUNCH, label: "Soco" };
   if (kind === "item") {
     const it = (character.items || []).find((i) => i.id === entryId);
@@ -232,14 +256,16 @@ function resolveAction(character, kind, entryId, actId){
   return act ? { entry: found.entry, act, label: act.l } : null;
 }
 
-function openAction(character, kind, entryId, actId){
+export function openAction(character, kind, entryId, actId){
   const r = resolveAction(character, kind, entryId, actId);
   if (!r) return;
   const { entry, act } = r;
-  const all = ctx.characters();
+  const chars = ctx.characters();
+  const mons = monstersNow().filter((m) => m.id !== character.id);
+  const all = [...chars, ...mons];
   const now = Date.now();
   const bonus = act.t ? EN.effAttr(character, act.t, now) + (act.tb || 0) + (act.dmg || act.melee || act.ranged ? EN.fxMod(character, "ataque", now) : 0) : 0;
-  const disadv = ctx.disadv(character);
+  const disadv = character.isMonster ? false : ctx.disadv(character);
   const lines = [];
   if (act.t) lines.push(`Teste: <b>${attrLabel(act.t)}</b> (${bonus >= 0 ? "+" : ""}${bonus})${disadv ? " — com desvantagem" : ""}`);
   if (act.dmg) lines.push(`Dano: <b>${esc(act.dmg)}</b>${act.melee ? ` + Força (${EN.effAttr(character, "forca", now)})` : ""}${act.dt ? ` ${esc(act.dt)}` : ""} · crítico (20 natural): dano ×${act.ranged ? 3 : 2}`);
@@ -249,11 +275,11 @@ function openAction(character, kind, entryId, actId){
   const cd = EN.cdLabel(act); if (cd) lines.push(`Recarga: ${cd}`);
 
   const pick = (name, label, max, withSelf, preSelf) => {
-    const list = all.filter((c) => (withSelf || c.id !== character.id));
+    const list = (name === "ally" ? chars : all).filter((c) => (withSelf || c.id !== character.id));
     if (name === "foe") list.sort((a, b) => (a.id === character.id) - (b.id === character.id));   // você por último
     const rows = list.map((c) => {
       const me = c.id === character.id;
-      return `<label class="pz-pick ${isDead(c) ? "dead" : ""}"><input type="checkbox" data-pick="${name}" value="${c.id}" ${me && preSelf ? "checked" : ""} ${isDead(c) ? "disabled" : ""}> <span>${esc(c.fullName)}${me ? " (você)" : ""}</span></label>`;
+      return `<label class="pz-pick ${isDead(c) ? "dead" : ""}"><input type="checkbox" data-pick="${name}" value="${c.id}" ${me && preSelf ? "checked" : ""} ${isDead(c) ? "disabled" : ""}> <span>${c.isMonster ? `${esc(c.ico || "👹")} ` : ""}${esc(c.fullName)}${me ? " (você)" : ""}</span></label>`;
     }).join("");
     return `<div class="pz-picker"><span class="modal-label">${label} <small>(até ${max})</small></span><div class="pz-pick-list" data-max="${max}" data-name="${name}">${rows || `<em>ninguém disponível</em>`}</div></div>`;
   };
@@ -297,7 +323,7 @@ function openAction(character, kind, entryId, actId){
     const errEl = m.querySelector("[data-pz-err]");
     const ids = (name) => [...m.querySelectorAll(`input[data-pick="${name}"]:checked`)].map((b) => b.value);
     const foes = ids("foe").map((id) => all.find((c) => c.id === id)).filter(Boolean);
-    const allies = ids("ally").map((id) => all.find((c) => c.id === id)).filter(Boolean);
+    const allies = ids("ally").map((id) => chars.find((c) => c.id === id)).filter(Boolean);
     if (act.dmg && !foes.length) { errEl.textContent = "escolha pelo menos um alvo para o ataque."; return; }
     if ((act.heal || act.healS) && !allies.length) { errEl.textContent = "escolha quem vai receber a cura."; return; }
     const opts = {}; m.querySelectorAll("[data-opt]").forEach((b) => { opts[b.dataset.opt] = b.checked; });
@@ -323,12 +349,12 @@ function openAction(character, kind, entryId, actId){
 async function execute({ character, kind, entry, act, foes, allies, dcKey, opts }){
   const cid = ctx.campaign().id;
   const now = Date.now();
-  const plan = EN.planAction({ caster: character, foes, allies, entry, act, dcKey, opts, disadv: ctx.disadv(character), now });
+  const plan = EN.planAction({ caster: character, foes, allies, entry, act, dcKey, opts, disadv: character.isMonster ? false : ctx.disadv(character), now });
   const who = `<b>${esc(character.fullName)}</b>`;
 
   // efeitos de tela e som: um por deus; ultimate e 20 natural ocupam a tela inteira
   const godFx = (kind === "comum" || kind === "ultimate" || kind === "presente") ? godOf(character) : null;
-  if (!plan.failed) playFx({ god: godFx, kind: kind === "ultimate" ? "ultimate" : "power", crit: plan.crit, title: entry.n });
+  if (!plan.failed) playFx({ god: godFx, monster: kind === "mon", kind: kind === "ultimate" ? "ultimate" : "power", crit: plan.crit, title: entry.n });
   else if (plan.crit) playFx({ crit: true });
   const rows = [];
   const logs = [];
@@ -338,6 +364,7 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   const godN = godOf(character);
   if (plan.failed) narr = randomLine(FAIL_LINES);
   else if (kind === "punch") narr = randomLine(PUNCH_LINES);
+  else if (kind === "mon") narr = randomLine(MONSTER_LINES(character.fullName, entry.n));
   else if (kind === "item") {
     const it = (character.items || []).find((i) => `item:${i.id}` === entry.id);
     narr = randomLine(it && it.atk ? WEAPON_LINES(entry.n, it.atk.range === "ranged") : MAGIC_ITEM_LINES(entry.n));
@@ -360,7 +387,7 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
     if (t.dmg) bits.push(`dano <b>${t.dmg.total}</b> (${esc(t.dmg.text)}${t.dmg.mult > 1 ? ` ×${t.dmg.mult}` : ""})`);
     if (t.heal) bits.push(`cura <b>${t.heal}</b>`);
     if (t.fx.length) bits.push(t.fx.map((f) => esc(f.l)).join("; "));
-    const header = `<b>${esc(target.fullName)}</b>`;
+    const header = `<b>${target.isMonster ? `${esc(target.ico || "👹")} ` : ""}${esc(target.fullName)}</b>`;
     let status = "";
     if (hasEffect) {
       const delivered = await deliver(target, packet, character, entry, act);
@@ -374,10 +401,10 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   const selfFx = plan.selfFx;
   const cost = plan.failed ? 0 : plan.cost;
   let selfMsg = "";
-  await ctx.api.mutateCharacter(cid, character.id, (data) => {
+  await mutateT(character, (data) => {
     const t0 = Date.now();
     const patch = { cds: EN.startCd(data.cds, entry, act, t0) };
-    if (entry.id === "punch" || String(entry.id).startsWith("item:")) delete patch.cds;
+    if (entry.id === "punch" || String(entry.id).startsWith("item:") || String(entry.id).startsWith("mon:")) delete patch.cds;
     const fx = EN.liveFx(data, t0).concat(plan.failed ? [] : selfFx);
     if (selfFx.length && !plan.failed) patch.fx = fx;
     if (cost) {
@@ -404,23 +431,24 @@ async function deliver(target, packet, caster, entry, act){
   const tname = `<b>${esc(target.fullName)}</b>`;
   if (canWrite(target)) {
     let res = null;
-    await ctx.api.mutateCharacter(cid, target.id, (data) => { res = EN.applyPacket(data, { ...packet }, Date.now()); return res.patch; });
-    return { queued: false, steps: res.steps, log: describeApplied(tname, packet, res) };
+    await mutateT(target, (data) => { res = EN.applyPacket(data, { ...packet }, Date.now()); return res.patch; });
+    return { queued: false, steps: res.steps, log: describeApplied(tname, packet, res, "", !!target.isMonster) };
   }
   await ctx.api.createHit(cid, {
-    targetId: target.id, targetName: target.fullName, byName: caster.fullName, byHandle: ctx.handle(),
+    targetId: target.id, targetKind: target.isMonster ? "monster" : "character", targetName: target.fullName, byName: caster.fullName, byHandle: ctx.handle(),
     src: packet.src, packet: { dmg: packet.dmg, heal: packet.heal, stopBleed: packet.stopBleed, fx: packet.fx, src: packet.src },
   });
   return { queued: true, log: `⏳ ${tname} vai sofrer/receber os efeitos de <b>${esc(packet.src)}</b> (de <b>${esc(caster.fullName)}</b>) — aguardando aplicação.` };
 }
 
-function describeApplied(tname, packet, res, via){
+function describeApplied(tname, packet, res, via, mon){
   const bits = [];
-  if (packet.dmg > 0) bits.push(`sofreu <b>${packet.dmg - (res.absorbed || 0)}%</b> de dano${res.absorbed ? ` (${res.absorbed} absorvido)` : ""} — agora em ${res.after}%`);
-  if (packet.heal > 0) bits.push(`recuperou <b>${Math.min(packet.heal, res.before)}%</b> de dano — agora em ${res.after}%`);
+  // monstros: sem % nem vida restante (o narrador decide o que o grupo sabe)
+  if (packet.dmg > 0) bits.push(mon ? `sofreu <b>${packet.dmg - (res.absorbed || 0)}</b> de dano${res.absorbed ? ` (${res.absorbed} absorvido)` : ""}` : `sofreu <b>${packet.dmg - (res.absorbed || 0)}%</b> de dano${res.absorbed ? ` (${res.absorbed} absorvido)` : ""} — agora em ${res.after}%`);
+  if (packet.heal > 0) bits.push(mon ? `se recuperou` : `recuperou <b>${Math.min(packet.heal, res.before)}%</b> de dano — agora em ${res.after}%`);
   if (packet.stopBleed) bits.push("teve o sangramento estancado");
   if (packet.fx && packet.fx.length) bits.push(`recebeu: ${packet.fx.map((f) => esc(f.l)).join("; ")}`);
-  const dead = res.after >= res.max && res.before < res.max ? " ☠️ morreu." : "";
+  const dead = res.after >= res.max && res.before < res.max ? (mon ? " ☠️ foi derrotado!" : " ☠️ morreu.") : "";
   return `${packet.dmg > 0 ? "🩸" : "💚"} ${tname}: ${bits.join(", ")}${via ? ` <small>(${via})</small>` : ""}${dead}`;
 }
 
@@ -430,12 +458,12 @@ function describeApplied(tname, packet, res, via){
 export function onHits(hits){
   if (!ctx || !isPercy(ctx.campaign())) return;
   (hits || []).filter((h) => !h.applied && !inflight.has(h.id)).forEach((h) => {
-    const target = ctx.characters().find((c) => c.id === h.targetId);
+    const target = allTargets().find((c) => c.id === h.targetId);
     if (!target || !canWrite(target)) return;
     inflight.add(h.id);
     let res = null;
-    ctx.api.applyHit(ctx.campaign().id, h.id, h.targetId, (data, hit) => { res = EN.applyPacket(data, { ...hit.packet }, Date.now()); return res.patch; })
-      .then((done) => { if (done && res) { const l = describeApplied(`<b>${esc(target.fullName)}</b>`, h.packet, res, `${esc(h.src || "ataque")} de <b>${esc(h.byName || "?")}</b>`); const m = l.match(/^(\S+)\s+([\s\S]*)$/); ctx.log(m[1], m[2]); } })
+    ctx.api.applyHit(ctx.campaign().id, h.id, h.targetId, (data, hit) => { res = EN.applyPacket(data, { ...hit.packet }, Date.now()); return res.patch; }, h.targetKind === "monster" ? "monster" : undefined)
+      .then((done) => { if (done && res) { const l = describeApplied(`<b>${target.isMonster ? `${esc(target.ico || "👹")} ` : ""}${esc(target.fullName)}</b>`, h.packet, res, `${esc(h.src || "ataque")} de <b>${esc(h.byName || "?")}</b>`, !!target.isMonster); const m = l.match(/^(\S+)\s+([\s\S]*)$/); ctx.log(m[1], m[2]); } })
       .catch((e) => console.error("percy hit:", e))
       .finally(() => inflight.delete(h.id));
   });
@@ -453,7 +481,7 @@ function tick(){
     const u = parseInt(el.dataset.until, 10);
     if (u <= now) expired = true; else el.textContent = fmtMs(u - now);
   });
-  ctx.characters().forEach((c) => {
+  allTargets().forEach((c) => {
     if (!canWrite(c) || pruning.has(c.id)) return;
     const r = EN.pruneFx(c, now);
     if (!r.changed) return;
@@ -464,7 +492,7 @@ function tick(){
       const patch = { fx: p.fx };
       if (p.endDmg) patch.damage = Math.min(maxDamageOf(data), (data.damage || 0) + p.endDmg);
       return patch;
-    }).then(() => { if (r.endDmg) ctx.log("🩸", `<b>${esc(c.fullName)}</b> sofreu <b>${r.endDmg}%</b> de dano pelo fim de <b>${esc(r.gone.find((f) => f.end).l)}</b>.`); })
+    }, kindOf(c)).then(() => { if (r.endDmg) ctx.log("🩸", `<b>${esc(c.fullName)}</b> sofreu <b>${r.endDmg}%</b> de dano pelo fim de <b>${esc(r.gone.find((f) => f.end).l)}</b>.`); })
       .catch((e) => console.error("percy prune:", e)).finally(() => pruning.delete(c.id));
   });
   if (expired && !refreshTimer) refreshTimer = setTimeout(() => { refreshTimer = null; ctx.refresh(); }, 400);

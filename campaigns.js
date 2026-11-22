@@ -8,6 +8,7 @@ import {
 import { DICE_TABLES, DEFAULT_MODE } from "./dice-data.js";
 import { playDiceTick, playDeathAlert } from "./sound.js";
 import { icon, stateIcon } from "./icons.js";
+import { initBestiary, renderBestiary } from "./bestiary.js";
 import { initPercy, isPercy, percySections, itemMeta, itemActions, attrBadge, attrBonusOf, narratorControls as percyControls, bindCard as bindPercyCard, onHits as percyOnHits, mountCharBlock, mountItemFields, takenGifts as percyTakenGifts, godOf } from "./percy.js";
 
 // ------------------------------------------------------------
@@ -222,7 +223,7 @@ function computeTransfer(fromItems, toItems, itemId, quantity, toCapacity = null
 
 async function initFirebaseBackend(){
   const db = await getDb();
-  const { collection, addDoc, doc, updateDoc, runTransaction, writeBatch, query, orderBy, limit, where, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
+  const { collection, addDoc, doc, updateDoc, runTransaction, writeBatch, query, orderBy, limit, where, deleteDoc, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
@@ -329,8 +330,9 @@ async function initFirebaseBackend(){
   };
 
   // ---- sistema Percy Jackson: leitura-e-escrita atômica da ficha + fila de ataques (hits) ----
-  campaignsAPI.mutateCharacter = async (campaignId, characterId, fn) => {
-    const ref = doc(db, "campaigns", campaignId, "characters", characterId);
+  const collOf = (kind) => (kind === "monster" ? "monsters" : "characters");
+  campaignsAPI.mutateCharacter = async (campaignId, characterId, fn, kind) => {
+    const ref = doc(db, "campaigns", campaignId, collOf(kind), characterId);
     return runTransaction(db, async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists()) return null;
@@ -338,6 +340,22 @@ async function initFirebaseBackend(){
       if (patch) tx.update(ref, patch);
       return patch || null;
     });
+  };
+
+  // ---- bestiário (monstros do narrador) ----
+  campaignsAPI.createMonster = async (campaignId, data) => {
+    const ref = await addDoc(collection(db, "campaigns", campaignId, "monsters"), { ...data, damage: 0, fx: [], cds: {}, revealed: false, createdAt: serverTimestamp() });
+    return ref.id;
+  };
+  campaignsAPI.updateMonster = async (campaignId, monsterId, patch) => {
+    await updateDoc(doc(db, "campaigns", campaignId, "monsters", monsterId), patch);
+  };
+  campaignsAPI.deleteMonster = async (campaignId, monsterId) => {
+    await deleteDoc(doc(db, "campaigns", campaignId, "monsters", monsterId));
+  };
+  campaignsAPI.listenMonsters = (campaignId, callback) => {
+    const q = query(collection(db, "campaigns", campaignId, "monsters"), orderBy("createdAt", "asc"));
+    return onSnapshot(q, (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data(), isMonster: true }))), (err) => console.error("Falha ao ler o bestiário:", err));
   };
 
   campaignsAPI.createHit = async (campaignId, hit) => {
@@ -350,9 +368,9 @@ async function initFirebaseBackend(){
   };
 
   // aplica um hit e o marca como aplicado na MESMA transação (evita aplicar duas vezes)
-  campaignsAPI.applyHit = async (campaignId, hitId, targetId, fn) => {
+  campaignsAPI.applyHit = async (campaignId, hitId, targetId, fn, kind) => {
     const hitRef = doc(db, "campaigns", campaignId, "hits", hitId);
-    const charRef = doc(db, "campaigns", campaignId, "characters", targetId);
+    const charRef = doc(db, "campaigns", campaignId, collOf(kind), targetId);
     return runTransaction(db, async (tx) => {
       const hitSnap = await tx.get(hitRef);
       if (!hitSnap.exists() || hitSnap.data().applied) return false;
@@ -394,6 +412,7 @@ function initLocalBackend(){
   const charKey = (campaignId) => `rl_local_characters_${campaignId}`;
   const eventKey = (campaignId) => `rl_local_events_${campaignId}`;
   const hitKey = (campaignId) => `rl_local_hits_${campaignId}`;
+  const monKey = (campaignId) => `rl_local_monsters_${campaignId}`;
   const channel = ("BroadcastChannel" in window) ? new BroadcastChannel("reverse_life_campaigns") : null;
 
   function readCampaigns(){ try { return JSON.parse(localStorage.getItem(CAMPAIGNS_KEY) || "[]"); } catch { return []; } }
@@ -402,6 +421,8 @@ function initLocalBackend(){
   function writeCharacters(campaignId, list){ localStorage.setItem(charKey(campaignId), JSON.stringify(list)); }
   function readEvents(campaignId){ try { return JSON.parse(localStorage.getItem(eventKey(campaignId)) || "[]"); } catch { return []; } }
   function writeEvents(campaignId, list){ localStorage.setItem(eventKey(campaignId), JSON.stringify(list.slice(-60))); }
+  function readMonsters(campaignId){ try { return JSON.parse(localStorage.getItem(monKey(campaignId)) || "[]"); } catch { return []; } }
+  function writeMonsters(campaignId, list){ localStorage.setItem(monKey(campaignId), JSON.stringify(list)); }
   function readHits(campaignId){ try { return JSON.parse(localStorage.getItem(hitKey(campaignId)) || "[]"); } catch { return []; } }
   function writeHits(campaignId, list){ localStorage.setItem(hitKey(campaignId), JSON.stringify(list.slice(-100))); }
 
@@ -409,6 +430,7 @@ function initLocalBackend(){
   let characterListeners = {};
   let eventListeners = {};
   let hitListeners = {};
+  let monsterListeners = {};
 
   function notifyCampaigns(){
     const list = readCampaigns();
@@ -417,6 +439,10 @@ function initLocalBackend(){
   function notifyCharacters(campaignId){
     const list = readCharacters(campaignId);
     (characterListeners[campaignId] || []).forEach((cb) => cb(list));
+  }
+  function notifyMonsters(campaignId){
+    const list = readMonsters(campaignId).map((m) => ({ ...m, isMonster: true }));
+    (monsterListeners[campaignId] || []).forEach((cb) => cb(list));
   }
   function notifyHits(campaignId){
     const list = readHits(campaignId).filter((h) => !h.applied);
@@ -434,6 +460,7 @@ function initLocalBackend(){
       if (msg.type === "character") notifyCharacters(msg.campaignId);
       if (msg.type === "event") notifyEvents(msg.campaignId);
       if (msg.type === "hit") notifyHits(msg.campaignId);
+      if (msg.type === "monster") notifyMonsters(msg.campaignId);
     };
   }
   window.addEventListener("storage", (ev) => {
@@ -442,6 +469,8 @@ function initLocalBackend(){
       notifyCharacters(ev.key.slice("rl_local_characters_".length));
     } else if (ev.key && ev.key.startsWith("rl_local_events_")) {
       notifyEvents(ev.key.slice("rl_local_events_".length));
+    } else if (ev.key && ev.key.startsWith("rl_local_monsters_")) {
+      notifyMonsters(ev.key.slice("rl_local_monsters_".length));
     } else if (ev.key && ev.key.startsWith("rl_local_hits_")) {
       notifyHits(ev.key.slice("rl_local_hits_".length));
     }
@@ -555,18 +584,42 @@ function initLocalBackend(){
   };
 
   // ---- sistema Percy Jackson (modo local) ----
-  campaignsAPI.mutateCharacter = async (campaignId, characterId, fn) => {
-    const list = readCharacters(campaignId);
+  campaignsAPI.mutateCharacter = async (campaignId, characterId, fn, kind) => {
+    const isMon = kind === "monster";
+    const list = isMon ? readMonsters(campaignId) : readCharacters(campaignId);
     const idx = list.findIndex((c) => c.id === characterId);
     if (idx === -1) return null;
     const patch = fn(list[idx]);
     if (patch) {
       list[idx] = { ...list[idx], ...patch };
-      writeCharacters(campaignId, list);
-      notifyCharacters(campaignId);
-      if (channel) channel.postMessage({ type: "character", campaignId });
+      if (isMon) { writeMonsters(campaignId, list); notifyMonsters(campaignId); if (channel) channel.postMessage({ type: "monster", campaignId }); }
+      else { writeCharacters(campaignId, list); notifyCharacters(campaignId); if (channel) channel.postMessage({ type: "character", campaignId }); }
     }
     return patch || null;
+  };
+  // ---- bestiário (modo local) ----
+  campaignsAPI.createMonster = async (campaignId, data) => {
+    const list = readMonsters(campaignId);
+    const id = `mo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    list.push({ ...data, id, damage: 0, fx: [], cds: {}, revealed: false, createdAt: Date.now() });
+    writeMonsters(campaignId, list);
+    notifyMonsters(campaignId);
+    if (channel) channel.postMessage({ type: "monster", campaignId });
+    return id;
+  };
+  campaignsAPI.updateMonster = async (campaignId, monsterId, patch) => {
+    await campaignsAPI.mutateCharacter(campaignId, monsterId, () => patch, "monster");
+  };
+  campaignsAPI.deleteMonster = async (campaignId, monsterId) => {
+    writeMonsters(campaignId, readMonsters(campaignId).filter((m) => m.id !== monsterId));
+    notifyMonsters(campaignId);
+    if (channel) channel.postMessage({ type: "monster", campaignId });
+  };
+  campaignsAPI.listenMonsters = (campaignId, callback) => {
+    monsterListeners[campaignId] = monsterListeners[campaignId] || [];
+    monsterListeners[campaignId].push(callback);
+    callback(readMonsters(campaignId).map((m) => ({ ...m, isMonster: true })));
+    return () => { monsterListeners[campaignId] = (monsterListeners[campaignId] || []).filter((cb) => cb !== callback); };
   };
   campaignsAPI.createHit = async (campaignId, hit) => {
     const list = readHits(campaignId);
@@ -581,13 +634,13 @@ function initLocalBackend(){
     callback(readHits(campaignId).filter((h) => !h.applied));
     return () => { hitListeners[campaignId] = (hitListeners[campaignId] || []).filter((cb) => cb !== callback); };
   };
-  campaignsAPI.applyHit = async (campaignId, hitId, targetId, fn) => {
+  campaignsAPI.applyHit = async (campaignId, hitId, targetId, fn, kind) => {
     const hits = readHits(campaignId);
     const hi = hits.findIndex((h) => h.id === hitId);
     if (hi === -1 || hits[hi].applied) return false;
     hits[hi] = { ...hits[hi], applied: true };
     writeHits(campaignId, hits);                       // marca primeiro: evita aplicar duas vezes
-    await campaignsAPI.mutateCharacter(campaignId, targetId, (data) => fn(data, hits[hi]));
+    await campaignsAPI.mutateCharacter(campaignId, targetId, (data) => fn(data, hits[hi]), kind);
     notifyHits(campaignId);
     if (channel) channel.postMessage({ type: "hit", campaignId });
     return true;
@@ -884,6 +937,15 @@ let currentCampaign = null;
 let unsubscribeCharacters = null;
 let unsubscribeHits = null;
 let lastHits = [];
+let unsubscribeMonsters = null;
+let lastMonsters = [];
+const bestiaryHost = document.getElementById("bestiarySection");
+function renderBestiaryNow(){ renderBestiary(bestiaryHost, lastMonsters); }
+// monstros que o usuário pode ver: o narrador vê todos, os jogadores só os revelados
+function visibleMonsters(){
+  const narr = !!currentCampaign && isCurrentUserCampaignCreator(currentCampaign);
+  return narr ? lastMonsters : lastMonsters.filter((m) => m.revealed);
+}
 let unsubscribeEvents = null;
 
 function renderCampaignCard(campaign){
@@ -924,6 +986,7 @@ function renderCampaignCard(campaign){
           refreshSanityTestBtn(updated);
           renderDicePanel(updated);
           applyCharacterFilter();
+          renderBestiaryNow();
         }
       }
     });
@@ -1151,6 +1214,16 @@ function openCampaign(campaign){
   };
   tryListenHits();
 
+  // bestiário (monstros do narrador)
+  if (unsubscribeMonsters) { unsubscribeMonsters(); unsubscribeMonsters = null; }
+  lastMonsters = [];
+  renderBestiaryNow();
+  const tryListenMonsters = () => {
+    if (!campaignsAPI.listenMonsters) { setTimeout(tryListenMonsters, 100); return; }
+    unsubscribeMonsters = campaignsAPI.listenMonsters(campaign.id, (list) => { lastMonsters = list; renderBestiaryNow(); percyOnHits(lastHits); });
+  };
+  tryListenMonsters();
+
   const tryListenEvents = () => {
     if (!campaignsAPI.listenEvents) { setTimeout(tryListenEvents, 100); return; }
     unsubscribeEvents = campaignsAPI.listenEvents(campaign.id, renderEventLog, (err) => {
@@ -1169,6 +1242,9 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeCharacters) { unsubscribeCharacters(); unsubscribeCharacters = null; }
   if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
   if (unsubscribeHits) { unsubscribeHits(); unsubscribeHits = null; }
+  if (unsubscribeMonsters) { unsubscribeMonsters(); unsubscribeMonsters = null; }
+  lastMonsters = [];
+  if (bestiaryHost) { bestiaryHost.hidden = true; bestiaryHost.innerHTML = ""; }
   currentCampaign = null;
   previousCharacterStates = new Map();
   cureConfigEl.hidden = true;
@@ -2834,7 +2910,16 @@ initPercy({
   handle: () => getCurrentHandle(),
   isNarrator: () => !!currentCampaign && isCurrentUserCampaignCreator(currentCampaign),
   isMine: (character) => isMineForNotify(character),
-  refresh: () => applyCharacterFilter(),
+  refresh: () => { applyCharacterFilter(); renderBestiaryNow(); },
+  monsters: () => visibleMonsters(),
   describeError,
   disadv: (character) => disadvantageFor(character),
+});
+
+initBestiary({
+  campaign: () => currentCampaign,
+  api: campaignsAPI,
+  isNarrator: () => !!currentCampaign && isCurrentUserCampaignCreator(currentCampaign),
+  log: (icon, text) => logEvent(icon, text),
+  describeError,
 });

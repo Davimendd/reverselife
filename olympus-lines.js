@@ -183,6 +183,11 @@ export const WEAPON_LINES = (name, ranged) => ranged
   ? [`${name} dispara e o projétil corta o ar sem desviar.`, `A mira se firma e ${name} parte em direção ao alvo.`]
   : [`${name} cintila por um instante e desce em um arco rápido.`, `A lâmina de ${name} canta ao cortar o ar.`, `${name} encontra a guarda do inimigo e pressiona.`];
 export const MAGIC_ITEM_LINES = (name) => [`${name} vibra com um poder antigo e responde ao chamado.`, `Uma luz discreta percorre ${name} e o efeito se manifesta.`];
+export const MONSTER_LINES = (name, attack) => [
+  `${name} avança com um urro e ataca: ${attack}!`,
+  `Os olhos de ${name} brilham de fúria e ${attack} vem rápido.`,
+  `${name} ruge e parte para cima usando ${attack}.`,
+];
 export const FAIL_LINES = [
   "A energia vacila e se dissipa antes de se completar.",
   "O momento passa: o golpe erra o alvo por pouco.",

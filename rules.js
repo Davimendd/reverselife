@@ -29,6 +29,8 @@ export function validateAttrs(attrs){
 
 // ---------- vida / estados do corpo ----------
 export function maxDamageOf(character){
+  // monstros do bestiário têm vida própria (hpMax, em pontos); fichas usam 100% + 5% por ponto de Vigor
+  if (character && character.hpMax > 0) return character.hpMax;
   return 100 + 5 * attrValue(character, "vigor");
 }
 

@@ -230,6 +230,13 @@ service cloud.firestore {
         allow update, delete: if false;
       }
 
+      // bestiário: monstros do narrador (só o narrador cria, edita e exclui)
+      match /monsters/{monsterId} {
+        allow read: if true;
+        allow create, update, delete: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid;
+      }
+
       // fila de ataques/efeitos entre fichas (sistema Percy Jackson)
       match /hits/{hitId} {
         allow read: if true;
@@ -245,7 +252,7 @@ service cloud.firestore {
 }
 ```
 
-A coleção `/hits` é a **fila de ataques e efeitos entre fichas** do sistema Percy Jackson. Quando um jogador ataca ou usa um poder em uma ficha que não é dele, o site não consegue alterar o dano dessa ficha (só o narrador e o dono podem), então grava um "hit" ali. Quem tem permissão (o narrador ou o dono da ficha-alvo), assim que abrir a campanha, aplica o hit automaticamente e o marca como aplicado — tudo dentro de uma transação, então nada é aplicado duas vezes. **Sem essa regra publicada, ataques entre fichas de donos diferentes não funcionam** (ataques do próprio narrador e em fichas próprias funcionam normalmente).
+A coleção `/monsters` guarda o **bestiário** (só o narrador escreve). **Atenção:** a leitura é pública como no resto do app, então monstros "ocultos" ficam escondidos na interface, mas não de quem abrir o console do navegador. A coleção `/hits` é a **fila de ataques e efeitos entre fichas** do sistema Percy Jackson. Quando um jogador ataca ou usa um poder em uma ficha que não é dele, o site não consegue alterar o dano dessa ficha (só o narrador e o dono podem), então grava um "hit" ali. Quem tem permissão (o narrador ou o dono da ficha-alvo), assim que abrir a campanha, aplica o hit automaticamente e o marca como aplicado — tudo dentro de uma transação, então nada é aplicado duas vezes. **Sem essa regra publicada, ataques entre fichas de donos diferentes não funcionam** (ataques do próprio narrador e em fichas próprias funcionam normalmente).
 
 A condição `!('creatorUid' in resource.data)` existe para não travar campanhas/fichas criadas **antes** de o site ter login (elas não têm esse campo salvo) — nesses casos, qualquer pessoa logada ainda consegue editar. Fichas e campanhas criadas depois do login já vêm com `creatorUid` preenchido e passam a valer só para quem criou.
 
@@ -280,6 +287,17 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 - **Ordem de defesa** ao receber dano: reduções por golpe (ex.: -5 em todo dano) → barreiras (ex.: Égide, absorve 15) → armaduras/escudos equipados (absorvem até o valor definido e perdem a mesma quantidade de durabilidade; chegando a zero **quebram**; o narrador pode reparar) → o resto vira dano na ficha.
 - **Custos**: poderes com custo (ex.: Ira do Olimpo, 15%) aplicam o dano ao próprio usuário. Se o custo mataria, a ficha fica em 1% do limite e ganha o efeito **Inconsciente**.
 
+**Bestiário (monstros do narrador)**
+
+Seção própria no fim da página da campanha, só existe com o sistema Percy Jackson ligado.
+
+- **Fichas de monstro**: nome, tipo, ícone, **vida em pontos**, **couraça natural** (reduz um valor fixo de cada golpe), os 5 atributos (sem limite de pontos) e uma lista de **ataques**. Cada ataque tem atributo do teste, dado de dano, corpo a corpo (soma a Força do monstro) ou à distância, número de alvos, resistência opcional (atributo do alvo contra Normal 10+) e um **efeito** opcional em quem falhar (rótulo, modificador de atributo/ataque/percepção e duração em minutos ou ações).
+- **11 modelos prontos** para começar: Fúria, Minotauro, Hidra, Quimera, Cérbero, Harpia, Górgona, Ciclope, Esqueleto guerreiro, Cão infernal e Drakon. Dá para ajustar tudo antes de salvar.
+- **Mesma mecânica das fichas**: o narrador clica no ataque, escolhe os alvos e a dificuldade, e o site rola o teste, o dano, a resistência de cada alvo, aplica efeitos e narra no histórico. Os jogadores atacam monstros pela janela de uso de poderes, armas ou soco (os monstros revelados aparecem como alvos). Efeitos, barreiras e couraça valem nos dois sentidos.
+- **Oculto ou revelado**: monstros novos começam ocultos (só o narrador vê). Ao revelar, o histórico anuncia "Um(a) Minotauro surge diante do grupo!". Os jogadores veem só o nome, o ícone e uma barra com o estado (ileso, arranhado, ferido, muito ferido, quase morto, derrotado), sem números.
+- **Ferramentas do narrador**: ajuste de vida (-10/-5/+5/+10), restaurar (vida cheia, sem efeitos), editar, duplicar e excluir. Ao chegar a zero de vida o monstro é marcado como derrotado e o histórico avisa.
+- Ataques de jogadores contra monstros entram na mesma **fila de hits** e são aplicados quando o narrador abre a campanha.
+
 **Frases de invocação**
 
 - Cada uma das 148 ações de poderes e presentes tem uma **frase de narração** própria (ex.: Ira do Olimpo: "As nuvens se fecham sobre o acampamento..."). Ela aparece em itálico no **histórico da campanha**, logo abaixo da linha com os números, e no topo da janela de resultado. Soco, armas e objetos mágicos têm frases genéricas (com o nome do item), há frases para quando o teste falha e um complemento extra quando sai 20 natural. As frases ficam em `olympus-lines.js`, uma por `deus:poder:ação`, fáceis de editar.
@@ -298,7 +316,7 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 - Recargas em minutos têm contagem regressiva; "1x por combate" e "1x por dia" ficam marcados como usados até o dono ou o narrador clicar em ↺. O narrador tem "recarregar tudo" em *Controles do narrador*.
 - **Ataques entre fichas**: se você tem permissão na ficha-alvo (é o narrador ou o dono), o efeito é aplicado na hora. Se não, vai para a **fila de hits** (regra do Firestore acima) e é aplicado por quem tiver permissão assim que abrir a campanha.
 
-**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador), `percy.js` (interface e integração) e `percy-fx.js` (efeitos de tela; os sons ficam em `sound.js`) e `olympus-lines.js` (frases de invocação).
+**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador), `percy.js` (interface e integração) e `percy-fx.js` (efeitos de tela; os sons ficam em `sound.js`) `olympus-lines.js` (frases de invocação), `bestiary.js` e `bestiary-data.js` (bestiário).
 
 ## Como funciona a rolagem
 

@@ -7,11 +7,11 @@
 // rolagens em tempo real ou dados das campanhas.
 //
 // Ao publicar uma nova versão do site, aumente o número em
-// CACHE_NAME (ex: "reverse-life-v16") pra forçar os navegadores
+// CACHE_NAME (ex: "reverse-life-v17") pra forçar os navegadores
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v15";
+const CACHE_NAME = "reverse-life-v16";
 
 const APP_SHELL = [
   "./",
@@ -30,6 +30,8 @@ const APP_SHELL = [
   "./percy-engine.js",
   "./percy.js",
   "./percy-fx.js",
+  "./bestiary.js",
+  "./bestiary-data.js",
   "./dice-data.js",
   "./pwa.js",
   "./manifest.json",
