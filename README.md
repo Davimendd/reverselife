@@ -287,6 +287,16 @@ Regra opcional da campanha, ligada pelo narrador no painel `/etc/regras.cfg` (**
 - **Ordem de defesa** ao receber dano: reduções por golpe (ex.: -5 em todo dano) → barreiras (ex.: Égide, absorve 15) → armaduras/escudos equipados (absorvem até o valor definido e perdem a mesma quantidade de durabilidade; chegando a zero **quebram**; o narrador pode reparar) → o resto vira dano na ficha.
 - **Custos**: poderes com custo (ex.: Ira do Olimpo, 15%) aplicam o dano ao próprio usuário. Se o custo mataria, a ficha fica em 1% do limite e ganha o efeito **Inconsciente**.
 
+**Cenário da cena**
+
+Painel logo abaixo das regras (só no sistema Percy Jackson). O narrador digita o nome do lugar (opcional) e marca **etiquetas** do ambiente; todos os jogadores veem o cenário em tempo real, só leitura.
+
+- **Etiquetas**: 🌊 Perto de água · 🌧️ Chovendo · ⛈️ Tempestade · 🌑 Sombras · 🌿 Vegetação · 🏜️ Ambiente seco · ☀️ Sol forte · 🌙 Noite · 🔥 Fogo por perto · 🏢 Superfície artificial. Mudar o cenário aparece no histórico ("O narrador mudou o cenário: Bosque do lago — 🌧️ Chovendo...").
+- **Opções preenchidas sozinhas** na janela de uso, com a marca "cenário" (dá para desmarcar na mão): *Alvo úmido* (Descarga Elétrica) com chuva ou tempestade; *Sem fonte de água próxima* (Pressão Abissal) quando há cenário e nem água nem chuva; *Em contato com água natural* (Revitalização das Marés) com água; *Ambiente completamente seco* (Cólera dos Sete Mares) com ambiente seco. Com o cenário vazio tudo continua manual, como antes.
+- **Avisos de requisito** (não bloqueiam; o narrador decide): Manto da Escuridão pede sombras; Essência Revigorante e Despertar da Mãe-Terra pedem vegetação; Raízes Aprisionadoras, Despertar da Mãe-Terra e Semente da Renovação não combinam com superfície artificial.
+- **Clima na tela**: chuva e tempestade (riscos de chuva), noite (tom azul), sol (luz quente) e sombras (bordas escuras) ficam sutis, abaixo da vinheta. Cada pessoa desliga com a caixa "clima na tela"; respeita "movimento reduzido".
+- As regras de cada poder ficam em `olympus-data.js` (`opt.auto`, `need`, `not`), fáceis de ampliar. A lógica está em `scene.js`.
+
 **Bestiário (monstros do narrador)**
 
 Seção própria no fim da página da campanha, só existe com o sistema Percy Jackson ligado.
@@ -316,7 +326,7 @@ Seção própria no fim da página da campanha, só existe com o sistema Percy J
 - Recargas em minutos têm contagem regressiva; "1x por combate" e "1x por dia" ficam marcados como usados até o dono ou o narrador clicar em ↺. O narrador tem "recarregar tudo" em *Controles do narrador*.
 - **Ataques entre fichas**: se você tem permissão na ficha-alvo (é o narrador ou o dono), o efeito é aplicado na hora. Se não, vai para a **fila de hits** (regra do Firestore acima) e é aplicado por quem tiver permissão assim que abrir a campanha.
 
-**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador), `percy.js` (interface e integração) e `percy-fx.js` (efeitos de tela; os sons ficam em `sound.js`) `olympus-lines.js` (frases de invocação), `bestiary.js` e `bestiary-data.js` (bestiário).
+**Arquivos**: `olympus-data.js` (os 16 deuses, 48 poderes e 48 presentes, extraídos do PDF), `percy-engine.js` (regras puras, testáveis fora do navegador), `percy.js` (interface e integração) e `percy-fx.js` (efeitos de tela; os sons ficam em `sound.js`) `olympus-lines.js` (frases de invocação), `bestiary.js` e `bestiary-data.js` (bestiário) e `scene.js` (cenário da cena).
 
 ## Como funciona a rolagem
 

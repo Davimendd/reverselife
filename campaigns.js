@@ -9,6 +9,7 @@ import { DICE_TABLES, DEFAULT_MODE } from "./dice-data.js";
 import { playDiceTick, playDeathAlert } from "./sound.js";
 import { icon, stateIcon } from "./icons.js";
 import { initBestiary, renderBestiary } from "./bestiary.js";
+import { initScene, renderScene } from "./scene.js";
 import { initPercy, isPercy, percySections, itemMeta, itemActions, attrBadge, attrBonusOf, narratorControls as percyControls, bindCard as bindPercyCard, onHits as percyOnHits, mountCharBlock, mountItemFields, takenGifts as percyTakenGifts, godOf } from "./percy.js";
 
 // ------------------------------------------------------------
@@ -940,6 +941,10 @@ let lastHits = [];
 let unsubscribeMonsters = null;
 let lastMonsters = [];
 const bestiaryHost = document.getElementById("bestiarySection");
+// painel do cenário da cena (logo abaixo das regras)
+const sceneHost = document.createElement("section");
+sceneHost.id = "scenePanel"; sceneHost.className = "scene-panel"; sceneHost.hidden = true;
+rulesPanelEl.insertAdjacentElement("afterend", sceneHost);
 function renderBestiaryNow(){ renderBestiary(bestiaryHost, lastMonsters); }
 // monstros que o usuário pode ver: o narrador vê todos, os jogadores só os revelados
 function visibleMonsters(){
@@ -983,6 +988,7 @@ function renderCampaignCard(campaign){
           renderCampaignHeader(updated);
           renderCureConfig(updated);
           renderRulesPanel(updated);
+          renderScene(sceneHost, updated);
           refreshSanityTestBtn(updated);
           renderDicePanel(updated);
           applyCharacterFilter();
@@ -1175,6 +1181,7 @@ function openCampaign(campaign){
   attrRollResults.clear();
   attrMenu = null;
   renderRulesPanel(campaign);
+  renderScene(sceneHost, campaign);
   refreshSanityTestBtn(campaign);
   renderDicePanel(campaign);
   startBleedTimer();
@@ -1245,6 +1252,7 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeMonsters) { unsubscribeMonsters(); unsubscribeMonsters = null; }
   lastMonsters = [];
   if (bestiaryHost) { bestiaryHost.hidden = true; bestiaryHost.innerHTML = ""; }
+  renderScene(sceneHost, null);
   currentCampaign = null;
   previousCharacterStates = new Map();
   cureConfigEl.hidden = true;
@@ -2914,6 +2922,13 @@ initPercy({
   monsters: () => visibleMonsters(),
   describeError,
   disadv: (character) => disadvantageFor(character),
+});
+
+initScene({
+  campaign: () => currentCampaign,
+  api: campaignsAPI,
+  isNarrator: () => !!currentCampaign && isCurrentUserCampaignCreator(currentCampaign),
+  log: (icon, text) => logEvent(icon, text),
 });
 
 initBestiary({

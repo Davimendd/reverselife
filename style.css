@@ -3131,3 +3131,44 @@ body.pzfx-shake{ animation:pzShake .6s ease-in-out; }
 .mon-form label .modal-input:focus{ outline:none; border-color:var(--red); }
 .mon-atk-top .modal-input, .mon-atk-fx > .modal-input{ padding:7px 9px; background:var(--black); border:1px solid var(--line); color:var(--off); font-family:var(--mono); font-size:13px; box-sizing:border-box; }
 .mon-atk-grid{ grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); }
+
+
+/* ============================================================
+   CENÁRIO DA CENA — etiquetas do ambiente e clima na tela
+   ============================================================ */
+.scene-panel{ margin:14px 0; padding:12px 14px; border:1px solid color-mix(in srgb, var(--gold) 30%, var(--line)); background:linear-gradient(180deg, color-mix(in srgb, var(--gold) 6%, var(--black)), var(--black-2)); display:flex; flex-direction:column; gap:10px; }
+.scene-head{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.scene-title{ font-family:"Cinzel","Palatino Linotype",Georgia,serif; font-size:14px; letter-spacing:0.12em; text-transform:uppercase; color:var(--gold); }
+.scene-place{ font-family:"Cinzel","Palatino Linotype",Georgia,serif; font-size:15px; color:var(--marble, #ece6d6); }
+.scene-hint{ font-size:12px; color:var(--mute); }
+.scene-name{ width:100%; padding:8px 10px; background:var(--black); border:1px solid var(--line); color:var(--off); font-family:var(--mono); font-size:13px; box-sizing:border-box; }
+.scene-name:focus{ outline:none; border-color:var(--gold); }
+.scene-tags{ display:flex; flex-wrap:wrap; gap:6px; }
+.scene-tag{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; font-family:var(--mono); font-size:12.5px; color:var(--mute); background:var(--black); border:1px solid var(--line); cursor:pointer; transition:border-color .15s, color .15s, background .15s; }
+.scene-tag span{ font-size:15px; }
+.scene-tag:hover{ border-color:var(--gold); color:var(--off); }
+.scene-tag.on{ color:var(--black); background:var(--gold); border-color:var(--gold); font-weight:700; }
+.scene-tags.readonly .scene-tag{ cursor:default; }
+.scene-foot{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.scene-amb{ font-size:12px; color:var(--mute); display:inline-flex; align-items:center; gap:6px; margin-left:auto; cursor:pointer; }
+
+/* opções e avisos no uso de poderes */
+.pz-auto{ font-style:normal; font-size:11px; padding:1px 6px; margin-left:4px; color:var(--gold); border:1px solid color-mix(in srgb, var(--gold) 50%, transparent); }
+.pz-warn{ margin:8px 0; padding:7px 10px; font-size:12.5px; line-height:1.45; color:var(--alert); border-left:3px solid var(--alert); background:rgba(255,179,71,.07); }
+
+/* clima na tela: bem sutil, abaixo da vinheta */
+.scene-ambient{ position:fixed; inset:0; pointer-events:none; z-index:47; opacity:0; transition:opacity 1.2s ease; }
+.scene-ambient.on{ opacity:1; }
+.scene-ambient.amb-noite{ background:linear-gradient(rgba(10,20,70,.22), rgba(5,8,30,.3)); }
+.scene-ambient.amb-sol{ background:radial-gradient(circle at 88% -5%, rgba(255,214,120,.2), transparent 55%); }
+.scene-ambient.amb-sombra{ box-shadow:inset 0 0 160px 40px rgba(0,0,0,.55); }
+.scene-ambient.amb-chuva, .scene-ambient.amb-tempestade{
+  background:
+    repeating-linear-gradient(104deg, transparent 0 22px, rgba(170,205,255,.11) 22px 23px),
+    repeating-linear-gradient(104deg, transparent 0 41px, rgba(170,205,255,.08) 41px 42px);
+  background-size:100% 100%, 100% 100%;
+  animation:sceneRain .55s linear infinite;
+}
+.scene-ambient.amb-tempestade{ background-color:rgba(10,15,35,.25); }
+@keyframes sceneRain{ from{ background-position:0 0, 0 0; } to{ background-position:-28px 120px, -17px 90px; } }
+@media (prefers-reduced-motion: reduce){ .scene-ambient.amb-chuva, .scene-ambient.amb-tempestade{ animation:none; } }

@@ -12,7 +12,9 @@
 //   ap efeitos em quem FALHA na resistência (ou sempre, sem rs) · apOk efeitos em quem resiste
 //   dmgFail dano só em quem falha · apAlly efeitos em aliados · apSelf efeitos no conjurador
 //   cost dano (%) que o conjurador sofre · cd recarga em minutos | "c" (1x por combate) | "d" (1x por dia)
-//   opt opções marcáveis [{id,l,mult,dmg,healAdd,rsPen}] · note sem automação (só registra o uso)
+//   opt opções marcáveis [{id,l,mult,dmg,healAdd,rsPen,auto}] · note sem automação (só registra o uso)
+//   opt.auto preenche a opção pelo cenário: {on:[tags]} marca se alguma tag estiver ativa; {unless:[tags]} marca se o cenário
+//   tiver tags e nenhuma dessas estiver ativa · need/not: tags que o poder exige / que o impedem (aviso, o narrador decide)
 // Efeito: l rótulo · m modificadores {atributo|ataque|percepcao: ±n} · min minutos · acts ações · hits ataques
 //   absorb barreira · dr redução de dano por golpe · dmgBonus {melee|all: dados} · bad (debuff) · end {dmg}
 // ============================================================
@@ -30,7 +32,7 @@ export const GODS = [
         ["2d8 de dano elétrico (dobra se o alvo estiver úmido)", "Falhou em Vigor: -5 em Agilidade por 1 hora", "Teste: Intelecto · Recarga: 10 min"],
         [{ id: "a", l: "Disparar descarga", t: "intelecto", foe: 1, dmg: "2d8", dt: "elétrico", rs: { a: "vigor", vs: "dc" },
           ap: [B("Músculos comprometidos (-5 Agilidade)", { agilidade: -5 }, { min: 60, bad: 1 })], cd: 10,
-          opt: [{ id: "wet", l: "Alvo úmido (dano dobra)", mult: 2 }] }]),
+          opt: [{ id: "wet", l: "Alvo úmido (dano dobra)", mult: 2, auto: { on: ["chuva", "tempestade"] } }] }]),
       entry("correntes", "Correntes Celestes", "Combate · Defesa · Mobilidade", "Rajada de ar que afasta adversários, desvia projéteis leves ou impulsiona o corpo.",
         ["Empurra até 2 inimigos em até 12 m (Força do semideus contra Vigor do alvo)", "Ou reduz o impacto de uma queda / salto de até 10 m", "Teste: Intelecto · Recarga: 15 min"],
         [{ id: "a", l: "Empurrar inimigos", t: "intelecto", foe: 2, rs: { a: "vigor", vs: "c", ca: "forca" }, ap: [E("Empurrado (até 12 m)", { acts: 1, bad: 1 })], cd: 15 },
@@ -60,16 +62,16 @@ export const GODS = [
       entry("pressao", "Pressão Abissal", "Combate", "Água comprimida liberada em um jato capaz de atravessar defesas.",
         ["2d8 de dano aquático (1d8 sem fonte de água por perto)", "Falhou em Força: arremessado até 4 m e derrubado", "Recarga: 15 min"],
         [{ id: "a", l: "Disparar jato", foe: 1, dmg: "2d8", dt: "aquático", rs: { a: "forca", vs: "dc" }, ap: [E("Derrubado (arremessado 4 m)", { acts: 1, bad: 1 })], cd: 15,
-          opt: [{ id: "dry", l: "Sem fonte de água próxima (dano 1d8)", dmg: "1d8" }] }]),
+          opt: [{ id: "dry", l: "Sem fonte de água próxima (dano 1d8)", dmg: "1d8", auto: { unless: ["agua", "chuva"] } }] }]),
       entry("mares", "Revitalização das Marés", "Cura", "Água luminosa que envolve o corpo e acelera a recuperação.",
         ["Recupera 2d8 de vida do semideus ou de um aliado (+1d8 em contato com água natural)", "Remove queimaduras leves, sangramentos superficiais e exaustão moderada", "Recarga: 20 min"],
-        [{ id: "a", l: "Revitalizar", ally: 1, self: true, heal: "2d8", stopBleed: true, cd: 20, opt: [{ id: "water", l: "Em contato com água natural (+1d8)", healAdd: "1d8" }] }]),
+        [{ id: "a", l: "Revitalizar", ally: 1, self: true, heal: "2d8", stopBleed: true, cd: 20, opt: [{ id: "water", l: "Em contato com água natural (+1d8)", healAdd: "1d8", auto: { on: ["agua"] } }] }]),
     ],
     ult: entry("cataclismo", "Cólera dos Sete Mares", "Ultimate", "Uma coluna aquática serpentina se rompe em uma onda colossal.",
       ["Inimigos em 12 m: 4d10 aquático (2d10 em ambiente seco); falhou em Força: arrastado 8 m e derrubado", "O semideus e até 3 aliados: barreira de 12, que dura os 2 próximos ataques", "Cura: semideus 2d8, aliados 1d8 · Custo: 20 PV · Recarga: 5 h"],
       [{ id: "a", l: "Liberar a onda", foe: 8, dmg: "4d10", dt: "aquático", rs: { a: "forca", vs: "dc" }, ap: [E("Arrastado e derrubado (sem deslocar na próxima ação)", { acts: 1, bad: 1 })],
         ally: 4, self: true, apAlly: [E("Corrente protetora (barreira 12)", { absorb: 12, hits: 2 })], healS: "2d8", heal: "1d8", cost: 20, cd: 300,
-        opt: [{ id: "dry", l: "Ambiente completamente seco (dano 2d10)", dmg: "2d10" }] }]),
+        opt: [{ id: "dry", l: "Ambiente completamente seco (dano 2d10)", dmg: "2d10", auto: { on: ["seco"] } }] }]),
     gifts: [
       entry("tridente", "Tridente das Profundezas", "Arma · Água", "Arma de bronze celestial e minerais abissais; suas pontas permanecem úmidas.",
         ["Causa 1d10 de dano em ataques físicos", "Uma vez por combate: coluna de água, 2d8 de dano e arremesso de 5 m", "Fincado em fonte natural: controla uma corrente em 15 m"],
@@ -94,7 +96,7 @@ export const GODS = [
         [{ id: "a", l: "Invocar as mãos", foe: 3, dmg: "1d8", dt: "necrótico", rs: { a: "forca", vs: "dc" }, ap: [E("Imobilizado pelas mãos (10 min)", { min: 10, bad: 1 })], cd: 15 }]),
       entry("manto", "Manto da Escuridão", "Mobilidade · Furtividade", "O corpo se envolve em sombras densas, difícil de perceber.",
         ["Desloca-se entre duas áreas escuras em até 12 m", "O primeiro ataque após o deslocamento recebe +3 no teste", "Dura até o deslocamento ou 10 min · Recarga: 15 min"],
-        [{ id: "a", l: "Atravessar as sombras", apSelf: [B("Manto da Escuridão (+3 no primeiro ataque)", { ataque: 3 }, { min: 10, acts: 1 })], cd: 15 }]),
+        [{ id: "a", l: "Atravessar as sombras", need: ["sombra"], apSelf: [B("Manto da Escuridão (+3 no primeiro ataque)", { ataque: 3 }, { min: 10, acts: 1 })], cd: 15 }]),
     ],
     ult: entry("julgamento", "Julgamento do Rei dos Mortos", "Ultimate", "O chão se abre em rachaduras negras e mãos espectrais surgem ao redor dos inimigos.",
       ["Inimigos em 12 m: 2d10 de dano necrótico; falhou em Vigor: preso por 2 ações e -3 em Agilidade", "Convoca até 2 guerreiros espectrais por 2 ações (1d8 necrótico por ataque)", "Custo: 20 PV · Recarga: 5 h"],
@@ -151,14 +153,14 @@ export const GODS = [
     powers: [
       entry("raizes", "Raízes Aprisionadoras", "Combate · Controle", "Raízes e vegetação crescem e prendem as pernas de um adversário.",
         ["Aprisiona um inimigo e dificulta sua esquiva; ele ainda ataca com os braços", "Para escapar à força, o alvo vence um teste de Força contra o Intelecto do semideus", "Dura até 10 min · exige solo natural ou vegetação · Recarga: 15 min"],
-        [{ id: "a", l: "Prender com raízes", t: "intelecto", foe: 1, rs: { a: "forca", vs: "c", ca: "intelecto" }, ap: [E("Preso pelas raízes (10 min)", { min: 10, bad: 1 })], cd: 15 }]),
+        [{ id: "a", l: "Prender com raízes", not: ["artificial"], t: "intelecto", foe: 1, rs: { a: "forca", vs: "c", ca: "intelecto" }, ap: [E("Preso pelas raízes (10 min)", { min: 10, bad: 1 })], cd: 15 }]),
       entry("essencia", "Essência Revigorante", "Suporte · Cura", "Energia vegetal extraída de plantas próximas, em forma de luz esverdeada.",
         ["Recupera 1d8 de vida do alvo (contato físico)", "Remove exaustão leve; não cura doenças nem ferimentos graves", "Não funciona em morto ou inconsciente por perda total de vida · Recarga: 20 min"],
-        [{ id: "a", l: "Revigorar", t: "intelecto", ally: 1, self: true, heal: "1d8", cd: 20 }]),
+        [{ id: "a", l: "Revigorar", need: ["vegetacao"], t: "intelecto", ally: 1, self: true, heal: "1d8", cd: 20 }]),
     ],
     ult: entry("mae_terra", "Despertar da Mãe-Terra", "Ultimate · Área", "Raízes gigantescas rompem o solo e vinhas avançam pelo campo de batalha.",
       ["Até 4 inimigos em 12 m: 2d10 de dano; falhou em Força: imobilizado por 20 min", "Até 2 aliados na área: proteção de raízes que absorve 10", "Custo: 15 de dano · Recarga: 5 h · exige solo natural ou vegetação"],
-      [{ id: "a", l: "Despertar a natureza", t: "intelecto", foe: 4, dmg: "2d10", dt: "natural", rs: { a: "forca", vs: "dc" }, ap: [E("Imobilizado pelas raízes (20 min)", { min: 20, bad: 1 })],
+      [{ id: "a", l: "Despertar a natureza", need: ["vegetacao"], not: ["artificial"], t: "intelecto", foe: 4, dmg: "2d10", dt: "natural", rs: { a: "forca", vs: "dc" }, ap: [E("Imobilizado pelas raízes (20 min)", { min: 20, bad: 1 })],
         ally: 2, apAlly: [E("Raízes protetoras (absorve 10)", { absorb: 10, min: 20 })], cost: 15, cd: 300 }]),
     gifts: [
       entry("foice", "Foice da Colheita", "Arma · Natureza", "Pequena foice com lâmina de bronze celestial e detalhes de espigas de trigo.",
@@ -167,7 +169,7 @@ export const GODS = [
          { id: "b", l: "Corte de energia vegetal", t: "intelecto", foe: 1, dmg: "1d6", dt: "natural", cd: 30 }]),
       entry("semente", "Semente da Renovação", "Suporte · Cura", "Semente dourada em um recipiente de madeira entalhada.",
         ["Plantada e ativada, recupera 2d8 de dano de um aliado ou de si mesmo", "Remove uma condição leve de toxinas naturais", "Uma única utilização · Recarga: 3 h"],
-        [{ id: "a", l: "Plantar e ativar", ally: 1, self: true, heal: "2d8", cd: 180 }]),
+        [{ id: "a", l: "Plantar e ativar", not: ["artificial"], ally: 1, self: true, heal: "2d8", cd: 180 }]),
       entry("manto_est", "Manto das Estações", "Defesa · Utilidade", "Manto de tecido natural com folhas douradas que mudam com as estações.",
         ["Resiste a frio e calor extremos e reduz tempestades naturais (30 min)", "Folhas e galhos absorvem 12 de dano de um ataque físico (20 min)", "Não protege contra fogo mágico · Recarga: 1 h"],
         [{ id: "a", l: "Envolver-se em folhas", apSelf: [E("Folhas protetoras (absorve 12)", { absorb: 12, min: 20 })], cd: 60 }]),

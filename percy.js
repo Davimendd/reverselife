@@ -10,6 +10,7 @@ import { GODS, GOD_BY_ID, godEntries, giftKey } from "./olympus-data.js";
 import * as EN from "./percy-engine.js";
 import { icon } from "./icons.js";
 import { playFx, fxEnabled, setFxEnabled } from "./percy-fx.js";
+import { autoOpt, actWarnings } from "./scene.js";
 import { lineFor, randomLine, PUNCH_LINES, WEAPON_LINES, MAGIC_ITEM_LINES, MONSTER_LINES, FAIL_LINES, CRIT_LINES } from "./olympus-lines.js";
 
 let ctx = null;
@@ -292,7 +293,8 @@ export function openAction(character, kind, entryId, actId){
         <h3 class="pz-modal-title">${esc(r.label)}</h3>
         <ul class="pz-summary">${lines.map((l) => `<li>${l}</li>`).join("")}</ul>
         ${showDc ? `<label class="modal-label">dificuldade (defesa do alvo)</label><select class="modal-select" data-pz-dc>${Object.entries(D20_TESTS).map(([k, t]) => `<option value="${k}">${t.label} (${t.min}+)</option>`).join("")}</select>` : ""}
-        ${(act.opt || []).map((o) => `<label class="pz-opt"><input type="checkbox" data-opt="${o.id}"> ${esc(o.l)}</label>`).join("")}
+        ${actWarnings(act, ctx.campaign()).map((w) => `<p class="pz-warn">⚠ ${esc(w)}</p>`).join("")}
+        ${(act.opt || []).map((o) => { const a = autoOpt(o, ctx.campaign()); return `<label class="pz-opt"><input type="checkbox" data-opt="${o.id}" ${a ? "checked" : ""}> ${esc(o.l)}${a !== null ? ` <em class="pz-auto" title="preenchido pelo cenário da cena">${a ? "cenário" : "cenário: não"}</em>` : ""}</label>`; }).join("")}
         ${act.foe ? pick("foe", "alvos (quem sofre)", act.foe, true, false) : ""}
         ${act.ally ? pick("ally", "aliados / quem recebe", act.ally, !!act.self, !!act.self) : ""}
         <label class="pz-opt pz-fxopt"><input type="checkbox" data-pz-fx ${fxEnabled() ? "checked" : ""}> efeitos de tela e som</label>
