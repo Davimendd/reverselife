@@ -3,6 +3,8 @@
 // Atributos, estados do corpo, sangramento, testes de D20 e ervas.
 // ============================================================
 
+import { DISTRICT_BY_N } from "./hunger-data.js";
+
 export const ATTR_POINTS_TOTAL = 10;
 export const ATTR_MAX = 5;
 
@@ -14,9 +16,27 @@ export const ATTRS = [
   { key: "intelecto", label: "Intelecto", icon: "🧠", desc: "Raciocínio, conhecimento e poder de investigação." }
 ];
 
+// passivas de distrito (sistema Jogos Vorazes): só valem com o sistema ligado na campanha aberta
+let passivesOn = false;
+export function setPassivesActive(on){ passivesOn = !!on; }
+export function passiveOf(character){
+  if (!passivesOn || !character || !character.district) return null;
+  const d = DISTRICT_BY_N[character.district];
+  return d ? d.passive : null;
+}
+export function passiveAttrBonus(character, key){
+  const p = passiveOf(character);
+  return (p && p.attr && p.attr[key]) || 0;
+}
+export function maxExtra(character){
+  const p = passiveOf(character);
+  return (p && p.maxDmg) || 0;
+}
+
+// valor base do atributo (a passiva do distrito entra aqui: vale em testes, dano, carga e vida)
 export function attrValue(character, key){
   const v = character && character.attrs ? Number(character.attrs[key]) : 0;
-  return Number.isFinite(v) ? v : 0;
+  return (Number.isFinite(v) ? v : 0) + passiveAttrBonus(character, key);
 }
 
 export function validateAttrs(attrs){
@@ -31,16 +51,17 @@ export function validateAttrs(attrs){
 export function maxDamageOf(character){
   // monstros do bestiário têm vida própria (hpMax, em pontos); fichas usam 100% + 5% por ponto de Vigor
   if (character && character.hpMax > 0) return character.hpMax;
-  return 100 + 5 * attrValue(character, "vigor");
+  return 100 + 5 * attrValue(character, "vigor") + maxExtra(character);
 }
 
 // Normal / Mancando / No Chão — os limites sobem 5 por ponto de Vigor
 export function bodyState(damage, character){
   const v = attrValue(character, "vigor");
-  const max = 100 + 5 * v;
+  const ex = maxExtra(character);
+  const max = 100 + 5 * v + ex;
   if (damage >= max) return { key: "morto", label: "Morto", icon: "☠️", desc: "O personagem não resistiu." };
-  if (damage > 80 + 5 * v) return { key: "chao", label: "No Chão", icon: "🧎", desc: "Não consegue nem andar: só se arrasta ou é carregado por outro jogador (que terá movimento limitado)." };
-  if (damage > 50 + 5 * v) return { key: "mancando", label: "Mancando", icon: "🦯", desc: "Movimento limitado, precisa de ajuda para concluir algumas ações e luta em desvantagem." };
+  if (damage > 80 + 5 * v + ex) return { key: "chao", label: "No Chão", icon: "🧎", desc: "Não consegue nem andar: só se arrasta ou é carregado por outro jogador (que terá movimento limitado)." };
+  if (damage > 50 + 5 * v + ex) return { key: "mancando", label: "Mancando", icon: "🦯", desc: "Movimento limitado, precisa de ajuda para concluir algumas ações e luta em desvantagem." };
   return { key: "normal", label: "Normal", icon: "🧍", desc: "Apto a qualquer ação e a lutar normalmente, com apenas limitações narrativas se necessário." };
 }
 
@@ -114,10 +135,12 @@ export function d20Message(r){
 export const CARRY_BASE = 5;
 export const CARRY_PER_STRENGTH = 2;
 export function carryCapacity(character){
-  return CARRY_BASE + CARRY_PER_STRENGTH * attrValue(character, "forca");
+  const bonus = ((character && character.items) || []).reduce((s, it) => s + (Number(it.capBonus) || 0), 0);
+  return CARRY_BASE + CARRY_PER_STRENGTH * attrValue(character, "forca") + bonus;
 }
+// itens "vestidos" (ex.: mochila) não ocupam espaço
 export function itemsCarried(items){
-  return (items || []).reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+  return (items || []).reduce((sum, it) => sum + (it.noSlot ? 0 : (Number(it.quantity) || 0)), 0);
 }
 
 // ---------- ervas ----------

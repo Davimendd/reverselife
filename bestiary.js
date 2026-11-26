@@ -6,7 +6,8 @@
 // ============================================================
 
 import { ATTRS, maxDamageOf } from "./rules.js";
-import { isPercy, fxChips, openAction, esc } from "./percy.js";
+import { combatOn, isHunger, fxChips, openAction, esc } from "./percy.js";
+import { THREAT_TEMPLATES } from "./hunger-data.js";
 import { MONSTER_TEMPLATES, TEMPLATE_BY_ID } from "./bestiary-data.js";
 
 let ctx = null;
@@ -15,6 +16,9 @@ export function initBestiary(c){ ctx = c; }
 const ATTR_OPTS = ATTRS.map((a) => `<option value="${a.key}">${a.label}</option>`).join("");
 const MOD_KEYS = [["", "sem modificador"], ...ATTRS.map((a) => [a.key, a.label]), ["ataque", "ataques"], ["percepcao", "percepção"]];
 const okDice = (s) => !s || /^\s*(\d*d\d+|\d+)(\s*\+\s*(\d*d\d+|\d+))*\s*$/i.test(s);
+const hg = () => isHunger(ctx.campaign());
+const templates = () => (hg() ? THREAT_TEMPLATES : MONSTER_TEMPLATES);
+const tplById = (id) => templates().find((t) => t.id === id);
 const visible = (m) => ctx.isNarrator() || !!m.revealed;
 
 function statusWord(m){
@@ -67,17 +71,17 @@ export function renderBestiary(host, monsters){
   const camp = ctx.campaign();
   const narr = ctx.isNarrator();
   const list = (monsters || []).filter(visible);
-  if (!isPercy(camp) || (!narr && !list.length)) { host.hidden = true; host.innerHTML = ""; return; }
+  if (!combatOn(camp) || (!narr && !list.length)) { host.hidden = true; host.innerHTML = ""; return; }
   host.hidden = false;
   const now = Date.now();
   host.innerHTML = `
     <div class="panel-label campaigns-head bestiary-head">
-      <span>06</span>
-      <h2>bestiário</h2>
-      ${narr ? `<button class="roll-btn small-btn" data-mon-new><span class="roll-btn-text">+ MONSTRO</span></button>` : ""}
+      <span>${hg() ? "07" : "06"}</span>
+      <h2>${hg() ? "ameaças" : "bestiário"}</h2>
+      ${narr ? `<button class="roll-btn small-btn" data-mon-new><span class="roll-btn-text">${hg() ? "+ AMEAÇA" : "+ MONSTRO"}</span></button>` : ""}
     </div>
-    <p class="bestiary-note">${narr ? "Seu espaço reservado: monstros ocultos só aparecem para você. Revele-os quando entrarem em cena. Atacam e são atacados com a mesma mecânica das fichas." : "Criaturas que o narrador revelou. Você pode escolhê-las como alvo ao atacar ou usar poderes."}</p>
-    <div class="bestiary-grid">${list.length ? list.map((m) => cardHtml(m, narr, now)).join("") : `<p class="empty-state">nenhum monstro no bestiário ainda. Use <b>+ MONSTRO</b> e comece por um dos modelos.</p>`}</div>`;
+    <p class="bestiary-note">${narr ? (hg() ? "Seu espaço reservado: NPCs inimigos e bestantes ocultos só aparecem para você. Revele-os quando entrarem em cena. Atacam e são atacados com a mesma mecânica das fichas (D20 + atributos)." : "Seu espaço reservado: monstros ocultos só aparecem para você. Revele-os quando entrarem em cena. Atacam e são atacados com a mesma mecânica das fichas.") : (hg() ? "Ameaças reveladas pelo narrador. Escolha-as como alvo ao atacar com uma arma do inventário." : "Criaturas que o narrador revelou. Você pode escolhê-las como alvo ao atacar ou usar poderes.")}</p>
+    <div class="bestiary-grid">${list.length ? list.map((m) => cardHtml(m, narr, now)).join("") : `<p class="empty-state">${hg() ? "nenhuma ameaça ainda. Use <b>+ AMEAÇA</b> e comece por um dos modelos." : "nenhum monstro no bestiário ainda. Use <b>+ MONSTRO</b> e comece por um dos modelos."}</p>`}</div>`;
   bind(host, monsters);
 }
 
@@ -116,7 +120,7 @@ function bind(host, monsters){
   }));
   host.querySelectorAll("[data-mon-del]").forEach((b) => b.addEventListener("click", async () => {
     const m = find(b.dataset.monDel); if (!m) return;
-    if (!confirm(`Excluir "${m.fullName}" do bestiário? Isso não pode ser desfeito.`)) return;
+    if (!confirm(`Excluir "${m.fullName}" ${hg() ? "das ameaças" : "do bestiário"}? Isso não pode ser desfeito.`)) return;
     await ctx.api.deleteMonster(cid, m.id).catch((e) => console.error(e));
   }));
   // efeitos ativos no monstro
@@ -144,6 +148,7 @@ function attackRow(a = {}){
       <label>dano (ex.: 2d6)<input type="text" class="modal-input" data-f="dmg" maxlength="20" placeholder="vazio = só efeito" value="${esc(a.dmg || "")}"></label>
       <label>tipo<select class="modal-select" data-f="range"><option value="melee" ${a.range !== "ranged" ? "selected" : ""}>corpo a corpo</option><option value="ranged" ${a.range === "ranged" ? "selected" : ""}>à distância</option></select></label>
       <label>alvos<input type="number" class="modal-input" data-f="targets" min="1" max="8" value="${a.targets || 1}"></label>
+      <label>% sangramento<input type="number" class="modal-input" data-f="bleed" min="0" max="95" value="${a.bleed || 0}"></label>
       <label>resistência<select class="modal-select" data-f="rs"><option value="">nenhuma</option>${ATTR_OPTS.replace(`value="${a.rs || ""}"`, `value="${a.rs}" selected`)}</select></label>
     </div>
     <div class="mon-atk-fx">
@@ -170,7 +175,7 @@ function openEditor(monster){
         <span class="terminal-title">/bin/${editing ? "editar" : "novo"}_monstro</span><button class="modal-close" data-mm-close aria-label="Fechar">✕</button></div>
       <div class="modal-body">
         ${editing ? "" : `<label class="modal-label">começar de um modelo</label>
-        <select class="modal-select" data-mm-tpl><option value="">em branco</option>${MONSTER_TEMPLATES.map((t) => `<option value="${t.id}">${t.ico} ${esc(t.fullName)} — ${esc(t.kind)}</option>`).join("")}</select>`}
+        <select class="modal-select" data-mm-tpl><option value="">em branco</option>${templates().map((t) => `<option value="${t.id}">${t.ico} ${esc(t.fullName)} — ${esc(t.kind)}</option>`).join("")}</select>`}
         <div class="mon-form" data-mm-form></div>
         <p class="modal-error" data-mm-err></p>
         <button class="roll-btn" data-mm-save><span class="roll-btn-text">${editing ? "SALVAR" : "ADICIONAR AO BESTIÁRIO"}</span></button>
@@ -205,7 +210,7 @@ function openEditor(monster){
   fill(base);
   q("[data-mm-close]").onclick = () => host.classList.add("hidden");
   const tpl = q("[data-mm-tpl]");
-  if (tpl) tpl.onchange = () => { const t = TEMPLATE_BY_ID[tpl.value]; fill(t || { ...base, fullName: "", kind: "" }); };
+  if (tpl) tpl.onchange = () => { const t = tplById(tpl.value); fill(t || { ...base, fullName: "", kind: "" }); };
 
   q("[data-mm-save]").onclick = async () => {
     const err = q("[data-mm-err]"); err.textContent = "";
@@ -223,6 +228,7 @@ function openEditor(monster){
       if (!okDice(g("dmg"))) { err.textContent = `dado de dano inválido em "${name}" (ex.: 2d6).`; return; }
       const atk = { id: `at_${Date.now().toString(36)}${attacks.length}`, name, attr: g("attr"), dmg: g("dmg"), range: g("range"), targets: Math.min(8, Math.max(1, parseInt(g("targets"), 10) || 1)) };
       if (g("rs")) atk.rs = g("rs");
+      if (parseInt(g("bleed"), 10) > 0) atk.bleed = Math.min(95, parseInt(g("bleed"), 10));
       if (g("fxl")) {
         const n = Math.max(1, parseInt(g("fxn"), 10) || 1), k = g("fxk"), v = parseInt(g("fxv"), 10) || 0;
         atk.fx = { l: g("fxl"), ...(g("fxd") === "acts" ? { acts: n } : { min: n }), ...(k && v ? { m: { [k]: v } } : {}) };

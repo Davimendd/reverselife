@@ -11,7 +11,7 @@
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v17";
+const CACHE_NAME = "reverse-life-v18";
 
 const APP_SHELL = [
   "./",
@@ -33,6 +33,11 @@ const APP_SHELL = [
   "./scene.js",
   "./bestiary.js",
   "./bestiary-data.js",
+  "./hunger-data.js",
+  "./hunger-engine.js",
+  "./hunger-events.js",
+  "./hunger.js",
+  "./hunger-arena.js",
   "./dice-data.js",
   "./pwa.js",
   "./manifest.json",

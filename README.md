@@ -220,6 +220,8 @@ service cloud.firestore {
           request.auth.uid == resource.data.creatorUid ||
           request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items'])
+          // Jogos Vorazes: ataques e efeitos aplicados na hora, sem confirmação do alvo
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'damage', 'fx', 'bleeding', 'sanity', 'infection', 'hunger', 'thirst'])
         );
         allow delete: if false;
       }
@@ -233,8 +235,35 @@ service cloud.firestore {
       // bestiário: monstros do narrador (só o narrador cria, edita e exclui)
       match /monsters/{monsterId} {
         allow read: if true;
-        allow create, update, delete: if request.auth != null
+        allow create, delete: if request.auth != null
           && request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid;
+        allow update: if request.auth != null && (
+          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+          // Jogos Vorazes: qualquer jogador pode ferir uma Ameaça (só dano e efeitos)
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['damage', 'fx'])
+        );
+      }
+
+      // Jogos Vorazes: estoque da Cornucópia (doc "cornucopia") — jogadores só mexem no campo stock
+      match /arena/{docId} {
+        allow read: if true;
+        allow create, delete: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid;
+        allow update: if request.auth != null && (
+          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
+        );
+      }
+
+      // Jogos Vorazes: presentes de patrocinadores e banquete — jogadores só baixam a quantidade (qty)
+      match /drops/{dropId} {
+        allow read: if true;
+        allow create, delete: if request.auth != null
+          && request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid;
+        allow update: if request.auth != null && (
+          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+          || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['qty'])
+        );
       }
 
       // fila de ataques/efeitos entre fichas (sistema Percy Jackson)
@@ -253,6 +282,8 @@ service cloud.firestore {
 ```
 
 A coleção `/monsters` guarda o **bestiário** (só o narrador escreve). **Atenção:** a leitura é pública como no resto do app, então monstros "ocultos" ficam escondidos na interface, mas não de quem abrir o console do navegador. A coleção `/hits` é a **fila de ataques e efeitos entre fichas** do sistema Percy Jackson. Quando um jogador ataca ou usa um poder em uma ficha que não é dele, o site não consegue alterar o dano dessa ficha (só o narrador e o dono podem), então grava um "hit" ali. Quem tem permissão (o narrador ou o dono da ficha-alvo), assim que abrir a campanha, aplica o hit automaticamente e o marca como aplicado — tudo dentro de uma transação, então nada é aplicado duas vezes. **Sem essa regra publicada, ataques entre fichas de donos diferentes não funcionam** (ataques do próprio narrador e em fichas próprias funcionam normalmente).
+
+**Jogos Vorazes — regras novas (publique-as para o sistema funcionar online).** As coleções `/arena` (estoque da Cornucópia) e `/drops` (presentes e banquete) guardam o que os jogadores reivindicam: a transação do site baixa o estoque e põe o item na ficha de uma vez só, então vale quem reivindicar primeiro e nunca passa do estoque. Como os ataques desse sistema são aplicados **na hora, sem confirmação**, as fichas passam a aceitar de qualquer pessoa logada alterações em `damage`, `fx`, `bleeding`, `sanity`, `infection`, `hunger`, `thirst` e `items` (e as Ameaças aceitam `damage` e `fx`). O custo é que quem abrir o console do navegador também consegue mexer nesses campos; para mesas de amigos isso costuma ser aceitável. Se o site não conseguir gravar (regras antigas), ele cai sozinho na fila de hits do Percy Jackson. O veneno de cada prato da Última Ceia fica escondido só na interface (como os monstros ocultos).
 
 A condição `!('creatorUid' in resource.data)` existe para não travar campanhas/fichas criadas **antes** de o site ter login (elas não têm esse campo salvo) — nesses casos, qualquer pessoa logada ainda consegue editar. Fichas e campanhas criadas depois do login já vêm com `creatorUid` preenchido e passam a valer só para quem criou.
 

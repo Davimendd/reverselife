@@ -11,12 +11,19 @@ import * as EN from "./percy-engine.js";
 import { icon } from "./icons.js";
 import { playFx, fxEnabled, setFxEnabled } from "./percy-fx.js";
 import { autoOpt, actWarnings } from "./scene.js";
+import { isHungerCampaign, coatDice } from "./hunger-engine.js";
 import { lineFor, randomLine, PUNCH_LINES, WEAPON_LINES, MAGIC_ITEM_LINES, MONSTER_LINES, FAIL_LINES, CRIT_LINES } from "./olympus-lines.js";
 
 let ctx = null;
 const inflight = new Set();
 
 export const isPercy = (campaign) => !!(campaign && campaign.percyEnabled && campaign.diceSystem === "d20");
+export const isHunger = (campaign) => isHungerCampaign(campaign);
+// Percy Jackson e Jogos Vorazes compartilham o sistema de combate (testes, dano, efeitos, armas, bestiário)
+export const combatOn = (campaign) => isPercy(campaign) || isHunger(campaign);
+const HG_WEAPON_LINES = (n, ranged) => ranged
+  ? [`${n} corta o ar e o silêncio da arena.`, `O disparo de ${n} ecoa entre as árvores.`, `Um tributo mira com ${n}, e o canhão do Capitólio ameaça soar.`]
+  : [`${n} cai sobre o inimigo sem piedade.`, `O golpe de ${n} é seco e certeiro.`, `Na arena, só sobrevive quem acerta primeiro: ${n} faz o seu trabalho.`];
 export const godOf = (c) => (c && c.percy && GOD_BY_ID[c.percy.god]) || null;
 export { EN };
 
@@ -77,6 +84,7 @@ export function fxChips(character, writable, now){
     if (f.acts != null) bits.push(`<em>${f.acts} ${f.acts === 1 ? "ação" : "ações"}</em>`);
     if (f.hits != null) bits.push(`<em>${f.hits} golpe${f.hits === 1 ? "" : "s"}</em>`);
     if (f.absorb != null) bits.push(`<em>barreira ${f.absorb}</em>`);
+    if (f.sched && f.sched.length) { const nx = Math.min(...f.sched.map((e) => e.at)); bits.push(`<em class="pz-timer" data-until="${nx}" title="próxima etapa">⏱ ${fmtMs(nx - now)}</em>`); }
     if (f.dr != null) bits.push(`<em>-${f.dr} por golpe</em>`);
     return `<span class="pz-fxchip ${f.bad ? "bad" : "good"}" title="${esc(f.src || "")}">
       <span class="pz-fxl">${esc(f.l)}</span>${bits.join("")}
@@ -136,16 +144,22 @@ function drachmasHtml(character){
 
 // bônus/penalidade de efeitos ao lado do atributo
 export function attrBadge(character, key){
-  if (!isPercy(ctx.campaign())) return "";
+  if (!combatOn(ctx.campaign())) return "";
   const m = EN.fxMod(character, key);
   return m ? `<span class="pz-mod ${m > 0 ? "up" : "down"}" title="efeitos ativos">${m > 0 ? "+" : ""}${m}</span>` : "";
 }
-export const attrBonusOf = (character, key) => (isPercy(ctx.campaign()) ? EN.fxMod(character, key) : 0);
+export const attrBonusOf = (character, key) => (combatOn(ctx.campaign()) ? EN.fxMod(character, key) : 0);
 
 // ---------- itens do inventário ----------
 export function itemMeta(item){
   const parts = [];
-  if (item.atk) parts.push(`${esc(item.atk.dmg)} · ${attrLabel(item.atk.attr)} · ${item.atk.range === "ranged" ? "à distância" : "corpo a corpo"}`);
+  if (item.atk) {
+    const a = item.atk, extra = [];
+    if (a.bleed > 0) extra.push(`🩸 ${a.bleed}% de sangramento`); else if (a.bleed === 0) extra.push("sem sangramento");
+    if (a.ammo != null) extra.push(`🏹 munição ${a.ammo}/${a.ammoMax ?? a.ammo}`);
+    if (a.coated) extra.push("🖤 envenenada: +1 dado no próximo ataque");
+    parts.push(`${esc(a.coated ? coatDice(a.dmg) : a.dmg)} · ${attrLabel(a.attr)} · ${a.range === "ranged" ? "à distância" : "corpo a corpo"}${extra.length ? `<br>${extra.join(" · ")}` : ""}`);
+  }
   if (item.def) parts.push(item.def.broken ? "💥 quebrado" : `absorve ${item.def.absorb} por golpe · durabilidade ${item.def.hp}/${item.def.hpMax}${item.def.equipped ? " · equipado" : ""}`);
   if (item.mg) parts.push(`✨ ${esc(item.mg.text)}${item.mg.dmg ? ` · ${esc(item.mg.dmg)}` : ""}`);
   return parts.length ? `<span class="pz-item-meta">${parts.join("<br>")}</span>` : "";
@@ -153,9 +167,9 @@ export function itemMeta(item){
 const attrLabel = EN.attrLabel;
 
 export function itemActions(item, character){
-  if (!isPercy(ctx.campaign()) || !canWrite(character)) return "";
+  if (!combatOn(ctx.campaign()) || !canWrite(character)) return "";
   const out = [];
-  if (item.atk) out.push(`<button class="btn-mini pz-use" data-pitem-use="${item.id}">⚔ atacar</button>`);
+  if (item.atk) out.push(item.atk.ammo != null && item.atk.ammo <= 0 ? `<button class="btn-mini pz-use" disabled title="sem munição">⚔ sem munição</button>` : `<button class="btn-mini pz-use" data-pitem-use="${item.id}">⚔ atacar</button>`);
   if (item.mg) out.push(`<button class="btn-mini pz-use" data-pitem-use="${item.id}">✨ usar</button>`);
   if (item.def && !item.def.broken) out.push(`<button class="btn-mini" data-pitem-equip="${item.id}">${item.def.equipped ? "tirar" : "equipar"}</button>`);
   if (item.def && ctx.isNarrator() && (item.def.broken || item.def.hp < item.def.hpMax)) out.push(`<button class="btn-mini" data-pitem-repair="${item.id}">reparar</button>`);
@@ -222,6 +236,7 @@ const closeModal = () => { if (modalEl) { modalEl.classList.add("hidden"); modal
 export function monsterAct(atk){
   const act = { id: atk.id, l: atk.name, t: atk.attr || "forca", foe: atk.targets || 1 };
   if (atk.dmg) { act.dmg = atk.dmg; act[atk.range === "ranged" ? "ranged" : "melee"] = true; }
+  if (atk.bleed) act.bleed = atk.bleed;
   if (atk.rs) act.rs = { a: atk.rs, vs: "dc" };
   if (atk.fx && atk.fx.l) {
     const f = atk.fx;
@@ -245,7 +260,8 @@ function resolveAction(character, kind, entryId, actId){
     if (!it) return null;
     const entry = { id: `item:${it.id}`, n: it.name, tags: "Item", d: it.description || "", fx: [], acts: [] };
     let act;
-    if (it.atk) act = { id: "use", l: `Atacar com ${it.name}`, t: it.atk.attr, [it.atk.range === "ranged" ? "ranged" : "melee"]: true, foe: 1, dmg: it.atk.dmg };
+    if (isHunger(ctx.campaign()) && it.key === "erva_preta") act = { id: "use", l: "Ministrar Erva Preta (10 de dano)", t: "agilidade", foe: 1, dmg: "10", pierce: true, consumeItem: true, hg: true };
+    else if (it.atk) act = { id: "use", l: `Atacar com ${it.name}`, t: it.atk.attr, [it.atk.range === "ranged" ? "ranged" : "melee"]: true, foe: 1, dmg: it.atk.coated ? coatDice(it.atk.dmg) : it.atk.dmg, ...(isHunger(ctx.campaign()) ? { hg: true, tags: it.atk.tags || [], bleed: it.atk.bleed || 0, coated: !!it.atk.coated, ammo: it.atk.ammo != null } : {}) };
     else act = { id: "use", l: `Usar ${it.name}`, t: it.mg && it.mg.attr || undefined, foe: it.mg && it.mg.dmg ? 1 : 0, dmg: it.mg && it.mg.dmg || undefined, note: !(it.mg && it.mg.dmg) };
     entry.acts = [act];
     return { entry, act, label: act.l, item: it };
@@ -261,6 +277,7 @@ export function openAction(character, kind, entryId, actId){
   const r = resolveAction(character, kind, entryId, actId);
   if (!r) return;
   const { entry, act } = r;
+  if (r.item && r.item.atk && r.item.atk.ammo != null && r.item.atk.ammo <= 0) { alert("Sem munição: peça ao narrador para repor."); return; }
   const chars = ctx.characters();
   const mons = monstersNow().filter((m) => m.id !== character.id);
   const all = [...chars, ...mons];
@@ -271,6 +288,11 @@ export function openAction(character, kind, entryId, actId){
   if (act.t) lines.push(`Teste: <b>${attrLabel(act.t)}</b> (${bonus >= 0 ? "+" : ""}${bonus})${disadv ? " — com desvantagem" : ""}`);
   if (act.dmg) lines.push(`Dano: <b>${esc(act.dmg)}</b>${act.melee ? ` + Força (${EN.effAttr(character, "forca", now)})` : ""}${act.dt ? ` ${esc(act.dt)}` : ""} · crítico (20 natural): dano ×${act.ranged ? 3 : 2}`);
   if (act.heal || act.healS) lines.push(`Cura: <b>${esc(act.healS && !act.heal ? act.healS : act.heal)}</b>`);
+  if (act.hg && act.tags && act.tags.length) lines.push(`Bônus de distrito pode somar dano fixo (tags da arma: ${act.tags.map(esc).join(", ")})`);
+  if (act.bleed > 0) lines.push(`🩸 Chance de sangramento: <b>${act.bleed}%</b> (20 natural: +15)`);
+  if (act.coated) lines.push("🖤 Arma envenenada com Erva Preta: +1 dado de dano neste ataque (efeito de uma vez só)");
+  if (act.pierce) lines.push("🖤 Ignora armaduras e escudos");
+  if (act.ammo) lines.push(`🏹 Gasta 1 munição (${r.item.atk.ammo}/${r.item.atk.ammoMax ?? r.item.atk.ammo})`);
   if (act.rs) lines.push(`Resistência do alvo: ${attrLabel(act.rs.a)} ${act.rs.vs === "c" ? "contra o seu teste" : "(Normal 10+)"}`);
   if (act.cost) lines.push(`Custo: <b>${act.cost}%</b> de dano para você`);
   const cd = EN.cdLabel(act); if (cd) lines.push(`Recarga: ${cd}`);
@@ -369,7 +391,7 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   else if (kind === "mon") narr = randomLine(MONSTER_LINES(character.fullName, entry.n));
   else if (kind === "item") {
     const it = (character.items || []).find((i) => `item:${i.id}` === entry.id);
-    narr = randomLine(it && it.atk ? WEAPON_LINES(entry.n, it.atk.range === "ranged") : MAGIC_ITEM_LINES(entry.n));
+    narr = randomLine(it && it.atk ? (isHunger(ctx.campaign()) ? HG_WEAPON_LINES(entry.n, it.atk.range === "ranged") : WEAPON_LINES(entry.n, it.atk.range === "ranged")) : MAGIC_ITEM_LINES(entry.n));
   } else if (godN) narr = lineFor(godN.id, entry.id, act.id) || entry.d || "";
   if (plan.crit && !plan.failed) narr = `${narr} ${randomLine(CRIT_LINES)}`.trim();
   const narrHtml = narr ? `<span class="pz-narr">“${esc(narr)}”</span>` : "";
@@ -382,7 +404,7 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   // 1) alvos
   for (const t of plan.targets) {
     const target = fresh(t.target);
-    const packet = { dmg: t.dmg ? t.dmg.total : 0, heal: t.heal || 0, stopBleed: !!t.stopBleed, fx: t.fx, src: plan.src };
+    const packet = { dmg: t.dmg ? t.dmg.total : 0, heal: t.heal || 0, stopBleed: !!t.stopBleed, fx: t.fx, src: plan.src, bleed: t.bleed || 0, pierce: !!t.pierce };
     const hasEffect = packet.dmg > 0 || packet.heal > 0 || packet.stopBleed || packet.fx.length;
     const bits = [];
     if (t.resist) bits.push(`resistência ${attrLabel(t.resist.attr)}: ${t.resist.total}${t.resist.contest ? ` contra ${t.resist.need - 1}` : ` (precisa ${t.resist.need}+)`} → <b>${t.resisted ? "resistiu" : "falhou"}</b>`);
@@ -407,6 +429,19 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
     const t0 = Date.now();
     const patch = { cds: EN.startCd(data.cds, entry, act, t0) };
     if (entry.id === "punch" || String(entry.id).startsWith("item:") || String(entry.id).startsWith("mon:")) delete patch.cds;
+    // Jogos Vorazes: munição gasta, erva preta usada (uma vez só) e item consumível
+    if (kind === "item" && isHunger(ctx.campaign())) {
+      const iid = String(entry.id).slice(5);
+      patch.items = (data.items || []).flatMap((it) => {
+        if (it.id !== iid) return [it];
+        if (act.consumeItem) return it.quantity > 1 ? [{ ...it, quantity: it.quantity - 1 }] : [];
+        if (!it.atk) return [it];
+        const atk = { ...it.atk };
+        if (atk.ammo != null) atk.ammo = Math.max(0, atk.ammo - 1);
+        if (atk.coated) delete atk.coated;
+        return [{ ...it, atk }];
+      });
+    }
     const fx = EN.liveFx(data, t0).concat(plan.failed ? [] : selfFx);
     if (selfFx.length && !plan.failed) patch.fx = fx;
     if (cost) {
@@ -431,14 +466,20 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
 async function deliver(target, packet, caster, entry, act){
   const cid = ctx.campaign().id;
   const tname = `<b>${esc(target.fullName)}</b>`;
-  if (canWrite(target)) {
+  const direct = canWrite(target) || isHunger(ctx.campaign());     // Jogos Vorazes: o ataque é aplicado na hora, sem confirmação
+  if (direct) {
     let res = null;
+    try {
     await mutateT(target, (data) => { res = EN.applyPacket(data, { ...packet }, Date.now()); return res.patch; });
-    return { queued: false, steps: res.steps, log: describeApplied(tname, packet, res, "", !!target.isMonster) };
+    return { queued: false, steps: res.steps, log: describeApplied(tname, { ...packet, bled: res.bled }, res, "", !!target.isMonster) };
+    } catch (err) {
+      // sem permissão de escrita (regras do Firestore antigas): cai na fila de hits
+      if (canWrite(target) || !/permission|insufficient/i.test(String((err && (err.code || err.message)) || ""))) throw err;
+    }
   }
   await ctx.api.createHit(cid, {
     targetId: target.id, targetKind: target.isMonster ? "monster" : "character", targetName: target.fullName, byName: caster.fullName, byHandle: ctx.handle(),
-    src: packet.src, packet: { dmg: packet.dmg, heal: packet.heal, stopBleed: packet.stopBleed, fx: packet.fx, src: packet.src },
+    src: packet.src, packet: { dmg: packet.dmg, heal: packet.heal, stopBleed: packet.stopBleed, fx: packet.fx, src: packet.src, bleed: packet.bleed || 0, pierce: !!packet.pierce },
   });
   return { queued: true, log: `⏳ ${tname} vai sofrer/receber os efeitos de <b>${esc(packet.src)}</b> (de <b>${esc(caster.fullName)}</b>) — aguardando aplicação.` };
 }
@@ -449,6 +490,7 @@ function describeApplied(tname, packet, res, via, mon){
   if (packet.dmg > 0) bits.push(mon ? `sofreu <b>${packet.dmg - (res.absorbed || 0)}</b> de dano${res.absorbed ? ` (${res.absorbed} absorvido)` : ""}` : `sofreu <b>${packet.dmg - (res.absorbed || 0)}%</b> de dano${res.absorbed ? ` (${res.absorbed} absorvido)` : ""} — agora em ${res.after}%`);
   if (packet.heal > 0) bits.push(mon ? `se recuperou` : `recuperou <b>${Math.min(packet.heal, res.before)}%</b> de dano — agora em ${res.after}%`);
   if (packet.stopBleed) bits.push("teve o sangramento estancado");
+  if (res.bled) bits.push("🩸 começou a sangrar");
   if (packet.fx && packet.fx.length) bits.push(`recebeu: ${packet.fx.map((f) => esc(f.l)).join("; ")}`);
   const dead = res.after >= res.max && res.before < res.max ? (mon ? " ☠️ foi derrotado!" : " ☠️ morreu.") : "";
   return `${packet.dmg > 0 ? "🩸" : "💚"} ${tname}: ${bits.join(", ")}${via ? ` <small>(${via})</small>` : ""}${dead}`;
@@ -458,7 +500,7 @@ function describeApplied(tname, packet, res, via, mon){
 // fila de hits (ataques entre fichas) e passagem do tempo
 // ============================================================
 export function onHits(hits){
-  if (!ctx || !isPercy(ctx.campaign())) return;
+  if (!ctx || !combatOn(ctx.campaign())) return;
   (hits || []).filter((h) => !h.applied && !inflight.has(h.id)).forEach((h) => {
     const target = allTargets().find((c) => c.id === h.targetId);
     if (!target || !canWrite(target)) return;
@@ -476,7 +518,7 @@ const pruning = new Set();
 function tick(){
   if (!ctx) return;
   const camp = ctx.campaign();
-  if (!isPercy(camp)) return;
+  if (!combatOn(camp)) return;
   const now = Date.now();
   let expired = false;
   document.querySelectorAll("[data-until]").forEach((el) => {

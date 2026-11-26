@@ -9,8 +9,13 @@ import { DICE_TABLES, DEFAULT_MODE } from "./dice-data.js";
 import { playDiceTick, playDeathAlert } from "./sound.js";
 import { icon, stateIcon } from "./icons.js";
 import { initBestiary, renderBestiary } from "./bestiary.js";
+import { setPassivesActive, maxExtra } from "./rules.js";
+import { initHunger, hungerSections, hungerItemMeta, hungerItemActions, hungerControls, bindHungerCard, mountDistrictBlock, districtHeaderHtml, attrPassiveBadge, catalogPresets } from "./hunger.js";
+import { initArena, setArenaData, resetArenaData, renderArena } from "./hunger-arena.js";
+import * as HE from "./hunger-engine.js";
+import { DISTRICT_BY_N } from "./hunger-data.js";
 import { initScene, renderScene } from "./scene.js";
-import { initPercy, isPercy, percySections, itemMeta, itemActions, attrBadge, attrBonusOf, narratorControls as percyControls, bindCard as bindPercyCard, onHits as percyOnHits, mountCharBlock, mountItemFields, takenGifts as percyTakenGifts, godOf } from "./percy.js";
+import { initPercy, isPercy, isHunger, combatOn, percySections, itemMeta, itemActions, attrBadge, attrBonusOf, narratorControls as percyControls, bindCard as bindPercyCard, onHits as percyOnHits, mountCharBlock, mountItemFields, takenGifts as percyTakenGifts, godOf } from "./percy.js";
 
 // ------------------------------------------------------------
 // categorias de item de inventário
@@ -24,6 +29,7 @@ const ITEM_CATEGORIES = {
   erva_verde: { label: "Erva Verde", icon: "🌿" },
   erva_vermelha: { label: "Erva Vermelha", icon: "🌺" },
   erva_azul: { label: "Erva Azul", icon: "🫐" },
+  erva_preta: { label: "Erva Preta", icon: "🖤" },
   armadura: { label: "Armadura", icon: "🛡️" },
   escudo: { label: "Escudo", icon: "🔰" },
   magico: { label: "Objeto mágico", icon: "✨" }
@@ -197,7 +203,8 @@ function computeTransfer(fromItems, toItems, itemId, quantity, toCapacity = null
 
   const item = fromList[idx];
   const qty = Math.max(1, Math.min(quantity, item.quantity));
-  if (toCapacity !== null && itemsCarried(toItems) + qty > toCapacity) return { full: true };
+  if (item.unique && toItems.some((it) => it.key === item.key)) return { unique: true };
+  if (toCapacity !== null && !item.noSlot && itemsCarried(toItems) + qty > toCapacity) return { full: true };
 
   if (qty >= item.quantity) {
     fromList.splice(idx, 1);
@@ -205,18 +212,14 @@ function computeTransfer(fromItems, toItems, itemId, quantity, toCapacity = null
     fromList[idx] = { ...item, quantity: item.quantity - qty };
   }
 
-  const toList = [...toItems];
-  const matchIdx = toList.findIndex((it) => it.name === item.name && it.category === item.category);
+  // o item vai inteiro (arma, munição, usos, escudo...); só empilha com iguais e intactos (Jogos Vorazes)
+  const moved = { ...item, quantity: qty, id: `i_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` };
+  let toList = [...toItems];
+  const matchIdx = toList.findIndex((it) => (item.key ? HE.canStack(it, moved) : (it.name === item.name && it.category === item.category && !it.atk && !it.def)));
   if (matchIdx !== -1) {
     toList[matchIdx] = { ...toList[matchIdx], quantity: toList[matchIdx].quantity + qty };
   } else {
-    toList.push({
-      id: `i_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      name: item.name,
-      description: item.description,
-      category: item.category,
-      quantity: qty
-    });
+    toList.push(moved);
   }
 
   return { fromItems: fromList, toItems: toList, moved: { name: item.name, quantity: qty } };
@@ -224,7 +227,7 @@ function computeTransfer(fromItems, toItems, itemId, quantity, toCapacity = null
 
 async function initFirebaseBackend(){
   const db = await getDb();
-  const { collection, addDoc, doc, updateDoc, runTransaction, writeBatch, query, orderBy, limit, where, deleteDoc, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
+  const { collection, addDoc, doc, setDoc, updateDoc, runTransaction, writeBatch, query, orderBy, limit, where, deleteDoc, onSnapshot, serverTimestamp, Timestamp } = await getFirestoreFns();
 
   campaignsAPI.create = async ({ name, description, imageFile }) => {
     const creator = getCurrentHandle();
@@ -319,6 +322,7 @@ async function initFirebaseBackend(){
       const result = computeTransfer(fromData.items || [], toData.items || [], itemId, quantity, limitsOn ? carryCapacity(toData) : null);
       if (!result) throw new Error("ITEM_NOT_FOUND");
       if (result.full) throw new Error("INVENTORY_FULL");
+      if (result.unique) throw new Error("UNIQUE_ITEM");
 
       tx.update(fromRef, { items: result.fromItems });
       tx.update(toRef, { items: result.toItems });
@@ -402,6 +406,48 @@ async function initFirebaseBackend(){
       if (!res) return null;
       tx.update(ref, res.patch);
       return res;
+    });
+  };
+
+  // ---- Jogos Vorazes: Cornucópia (arena/cornucopia), presentes (drops) e reivindicação atômica ----
+  campaignsAPI.listenArena = (campaignId, callback) => onSnapshot(collection(db, "campaigns", campaignId, "arena"),
+    (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() })).find((d) => d.id === "cornucopia") || null),
+    (err) => console.error("Falha ao ler a Cornucópia:", err));
+  campaignsAPI.seedCornucopia = async (campaignId, stock) => {
+    await setDoc(doc(db, "campaigns", campaignId, "arena", "cornucopia"), { stock, resetAt: Date.now() });
+  };
+  campaignsAPI.listenDrops = (campaignId, callback) => onSnapshot(query(collection(db, "campaigns", campaignId, "drops"), orderBy("createdAt", "asc")),
+    (snap) => callback(snap.docs.map((d) => ({ id: d.id, ...d.data() }))), (err) => console.error("Falha ao ler os presentes:", err));
+  campaignsAPI.createDrop = async (campaignId, drop) => {
+    const ref = await addDoc(collection(db, "campaigns", campaignId, "drops"), { ...drop, createdAt: serverTimestamp() });
+    return ref.id;
+  };
+  campaignsAPI.updateDrop = async (campaignId, dropId, patch) => { await updateDoc(doc(db, "campaigns", campaignId, "drops", dropId), patch); };
+  campaignsAPI.deleteDrop = async (campaignId, dropId) => { await deleteDoc(doc(db, "campaigns", campaignId, "drops", dropId)); };
+  // tira 1 unidade do estoque (Cornucópia) ou do presente e grava o patch da ficha, tudo numa transação:
+  // vale quem reivindicar primeiro, e nunca passa do estoque
+  campaignsAPI.claimLoot = async (campaignId, { col, id, key, characterId, fn }) => {
+    const srcRef = doc(db, "campaigns", campaignId, col, id);
+    const chRef = doc(db, "campaigns", campaignId, "characters", characterId);
+    return runTransaction(db, async (tx) => {
+      const srcSnap = await tx.get(srcRef);
+      const chSnap = await tx.get(chRef);
+      if (!srcSnap.exists() || !chSnap.exists()) throw new Error("SOLD_OUT");
+      const src = srcSnap.data();
+      let srcPatch;
+      if (col === "arena") {
+        const stock = { ...(src.stock || {}) };
+        if (!(stock[key] > 0)) throw new Error("SOLD_OUT");
+        stock[key] -= 1;
+        srcPatch = { stock };
+      } else {
+        if (!(src.qty > 0)) throw new Error("SOLD_OUT");
+        srcPatch = { qty: src.qty - 1 };
+      }
+      const patch = fn(chSnap.data(), src);
+      tx.update(chRef, patch);
+      tx.update(srcRef, srcPatch);
+      return true;
     });
   };
 
@@ -575,6 +621,7 @@ function initLocalBackend(){
     const result = computeTransfer(list[fromIdx].items || [], list[toIdx].items || [], itemId, quantity, limitsOn ? carryCapacity(list[toIdx]) : null);
     if (!result) throw new Error("ITEM_NOT_FOUND");
     if (result.full) throw new Error("INVENTORY_FULL");
+    if (result.unique) throw new Error("UNIQUE_ITEM");
 
     list[fromIdx] = { ...list[fromIdx], items: result.fromItems };
     list[toIdx] = { ...list[toIdx], items: result.toItems };
@@ -681,6 +728,57 @@ function initLocalBackend(){
     return res;
   };
 
+  // ---- Jogos Vorazes (modo local) ----
+  const arenaKey = (cid) => `rl_local_arena_${cid}`;
+  const dropKey = (cid) => `rl_local_drops_${cid}`;
+  const readJson = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || "null") ?? d; } catch { return d; } };
+  let arenaListeners = {}, dropListeners = {};
+  const notifyArena = (cid) => (arenaListeners[cid] || []).forEach((cb) => cb(readJson(arenaKey(cid), null)));
+  const notifyDrops = (cid) => (dropListeners[cid] || []).forEach((cb) => cb(readJson(dropKey(cid), [])));
+  const pingHg = (cid) => { notifyArena(cid); notifyDrops(cid); if (channel) channel.postMessage({ type: "hg", campaignId: cid }); };
+  if (channel) { const prev = channel.onmessage; channel.onmessage = (ev) => { prev && prev(ev); const m = ev.data || {}; if (m.type === "hg") { notifyArena(m.campaignId); notifyDrops(m.campaignId); } }; }
+  window.addEventListener("storage", (ev) => {
+    if (ev.key && ev.key.startsWith("rl_local_arena_")) notifyArena(ev.key.slice("rl_local_arena_".length));
+    if (ev.key && ev.key.startsWith("rl_local_drops_")) notifyDrops(ev.key.slice("rl_local_drops_".length));
+  });
+  campaignsAPI.listenArena = (cid, cb) => { (arenaListeners[cid] = arenaListeners[cid] || []).push(cb); cb(readJson(arenaKey(cid), null)); return () => { arenaListeners[cid] = (arenaListeners[cid] || []).filter((x) => x !== cb); }; };
+  campaignsAPI.listenDrops = (cid, cb) => { (dropListeners[cid] = dropListeners[cid] || []).push(cb); cb(readJson(dropKey(cid), [])); return () => { dropListeners[cid] = (dropListeners[cid] || []).filter((x) => x !== cb); }; };
+  campaignsAPI.seedCornucopia = async (cid, stock) => { localStorage.setItem(arenaKey(cid), JSON.stringify({ id: "cornucopia", stock, resetAt: Date.now() })); pingHg(cid); };
+  campaignsAPI.createDrop = async (cid, drop) => {
+    const id = `d_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    localStorage.setItem(dropKey(cid), JSON.stringify([...readJson(dropKey(cid), []), { ...drop, id, createdAt: Date.now() }])); pingHg(cid); return id;
+  };
+  campaignsAPI.updateDrop = async (cid, id, patch) => { localStorage.setItem(dropKey(cid), JSON.stringify(readJson(dropKey(cid), []).map((d) => (d.id === id ? { ...d, ...patch } : d)))); pingHg(cid); };
+  campaignsAPI.deleteDrop = async (cid, id) => { localStorage.setItem(dropKey(cid), JSON.stringify(readJson(dropKey(cid), []).filter((d) => d.id !== id))); pingHg(cid); };
+  campaignsAPI.claimLoot = async (cid, { col, id, key, characterId, fn }) => {
+    const chars = readCharacters(cid);
+    const ci = chars.findIndex((c) => c.id === characterId);
+    if (ci === -1) throw new Error("SOLD_OUT");
+    let patchSrc;
+    if (col === "arena") {
+      const a = readJson(arenaKey(cid), null);
+      if (!a || !(a.stock[key] > 0)) throw new Error("SOLD_OUT");
+      const patch = fn(chars[ci], a);                      // pode lançar (inventário cheio) antes de gastar o estoque
+      a.stock = { ...a.stock, [key]: a.stock[key] - 1 };
+      patchSrc = () => localStorage.setItem(arenaKey(cid), JSON.stringify(a));
+      chars[ci] = { ...chars[ci], ...patch };
+    } else {
+      const drops = readJson(dropKey(cid), []);
+      const di = drops.findIndex((d) => d.id === id);
+      if (di === -1 || !(drops[di].qty > 0)) throw new Error("SOLD_OUT");
+      const patch = fn(chars[ci], drops[di]);
+      drops[di] = { ...drops[di], qty: drops[di].qty - 1 };
+      patchSrc = () => localStorage.setItem(dropKey(cid), JSON.stringify(drops));
+      chars[ci] = { ...chars[ci], ...patch };
+    }
+    patchSrc();
+    writeCharacters(cid, chars);
+    notifyCharacters(cid);
+    if (channel) channel.postMessage({ type: "character", campaignId: cid });
+    pingHg(cid);
+    return true;
+  };
+
   campaignsModeEl.textContent = "modo: local (sem Firebase configurado — só entre abas deste navegador)";
 }
 
@@ -719,6 +817,8 @@ function escapeHtml(str){
 }
 
 function describeError(err, fallback){
+  if (err && err.message === "UNIQUE_ITEM") return "este item é único: só pode haver um por inventário.";
+  if (err && err.message === "SOLD_OUT") return "acabou: alguém reivindicou esse item antes.";
   if (err && err.message === "INVENTORY_FULL") return "o inventário não tem espaço suficiente (o limite de itens depende da Força).";
   const code = err && err.code;
   if (code === "permission-denied") {
@@ -939,6 +1039,8 @@ let unsubscribeCharacters = null;
 let unsubscribeHits = null;
 let lastHits = [];
 let unsubscribeMonsters = null;
+let unsubscribeArena = null;
+let unsubscribeDrops = null;
 let lastMonsters = [];
 const bestiaryHost = document.getElementById("bestiarySection");
 // painel do cenário da cena (logo abaixo das regras)
@@ -985,6 +1087,7 @@ function renderCampaignCard(campaign){
         const updated = list.find((c) => c.id === currentCampaign.id);
         if (updated) {
           currentCampaign = updated;
+          setPassivesActive(HE.isHungerCampaign(updated));
           renderCampaignHeader(updated);
           renderCureConfig(updated);
           renderRulesPanel(updated);
@@ -993,6 +1096,7 @@ function renderCampaignCard(campaign){
           renderDicePanel(updated);
           applyCharacterFilter();
           renderBestiaryNow();
+          renderArena();
         }
       }
     });
@@ -1176,6 +1280,8 @@ function logDamageEvent(oldDamage, newDamage, fullName, max = 100){
 
 function openCampaign(campaign){
   currentCampaign = campaign;
+  setPassivesActive(HE.isHungerCampaign(campaign));
+  resetArenaData();
   renderCampaignHeader(campaign);
   renderCureConfig(campaign);
   attrRollResults.clear();
@@ -1231,6 +1337,17 @@ function openCampaign(campaign){
   };
   tryListenMonsters();
 
+  // Jogos Vorazes: Cornucópia e presentes de patrocinadores
+  if (unsubscribeArena) { unsubscribeArena(); unsubscribeArena = null; }
+  if (unsubscribeDrops) { unsubscribeDrops(); unsubscribeDrops = null; }
+  renderArena();
+  const tryListenArena = () => {
+    if (!campaignsAPI.listenArena) { setTimeout(tryListenArena, 100); return; }
+    unsubscribeArena = campaignsAPI.listenArena(campaign.id, (doc) => setArenaData({ stock: doc, loaded: true }));
+    unsubscribeDrops = campaignsAPI.listenDrops(campaign.id, (list) => setArenaData({ drops: list }));
+  };
+  tryListenArena();
+
   const tryListenEvents = () => {
     if (!campaignsAPI.listenEvents) { setTimeout(tryListenEvents, 100); return; }
     unsubscribeEvents = campaignsAPI.listenEvents(campaign.id, renderEventLog, (err) => {
@@ -1250,10 +1367,15 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (unsubscribeEvents) { unsubscribeEvents(); unsubscribeEvents = null; }
   if (unsubscribeHits) { unsubscribeHits(); unsubscribeHits = null; }
   if (unsubscribeMonsters) { unsubscribeMonsters(); unsubscribeMonsters = null; }
+  if (unsubscribeArena) { unsubscribeArena(); unsubscribeArena = null; }
+  if (unsubscribeDrops) { unsubscribeDrops(); unsubscribeDrops = null; }
+  resetArenaData();
+  setPassivesActive(false);
   lastMonsters = [];
   if (bestiaryHost) { bestiaryHost.hidden = true; bestiaryHost.innerHTML = ""; }
   renderScene(sceneHost, null);
   currentCampaign = null;
+  renderArena();
   previousCharacterStates = new Map();
   cureConfigEl.hidden = true;
   cureConfigEl.innerHTML = "";
@@ -1345,6 +1467,24 @@ function setPercyForm(character){
   percyCharCtl = mountCharBlock(host, lastCharacterList, character);
 }
 
+let hgCharCtl = null;       // escolha do distrito (só campanhas Jogos Vorazes)
+function setHungerForm(character){
+  const on = isHunger(currentCampaign);
+  let host = document.getElementById("hgCharBlock");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "hgCharBlock";
+    host.className = "pz-charblock hg-charblock";
+    charAttrBlock.insertAdjacentElement("beforebegin", host);
+  }
+  if (!on) { host.hidden = true; host.innerHTML = ""; hgCharCtl = null; return; }
+  const lab = (id) => document.querySelector(`label[for="${id}"]`);
+  lab("charStrength").textContent = "talento na arena";
+  charStrength.placeholder = "ex.: caçador silencioso, bom com arco, esconde-se bem";
+  lab("charWeakness").textContent = "ponto fraco";
+  hgCharCtl = mountDistrictBlock(host, () => lastCharacterList, character);
+}
+
 function openCharacterModal(character){
   editingCharacter = character || null;
 
@@ -1353,6 +1493,7 @@ function openCharacterModal(character){
   charStrength.value = character ? character.strength || "" : "";
   charWeakness.value = character ? character.weakness || "" : "";
   setPercyForm(character);
+  setHungerForm(character);
   charPhoto.value = "";
   if (character && character.photoUrl) {
     charPhotoPreview.querySelector("img").src = character.photoUrl;
@@ -1418,6 +1559,16 @@ characterSubmit.addEventListener("click", async () => {
     }
   }
 
+  // campanha Jogos Vorazes: distrito (máx. 3 tributos por distrito)
+  let hgExtra = null;
+  if (isHunger(currentCampaign) && hgCharCtl) {
+    const bad = hgCharCtl.validate();
+    if (bad) { characterError.textContent = bad; return; }
+    hgExtra = { district: hgCharCtl.get() };
+    if (!isEditing) Object.assign(hgExtra, { region: "", fx: [] });
+  }
+  const extraData = percyExtra || hgExtra;
+
   if (isEditing) {
     if (!campaignsAPI.updateCharacterInfo) {
       characterError.textContent = "backend ainda não carregou, tente novamente em instantes.";
@@ -1426,7 +1577,7 @@ characterSubmit.addEventListener("click", async () => {
     characterSubmit.disabled = true;
     characterError.textContent = "salvando alterações...";
     try {
-      await campaignsAPI.updateCharacterInfo(currentCampaign.id, editingCharacter.id, { fullName, gender, strength, weakness, photoFile, extra: percyExtra });
+      await campaignsAPI.updateCharacterInfo(currentCampaign.id, editingCharacter.id, { fullName, gender, strength, weakness, photoFile, extra: extraData });
       logEvent("✎", `<b>${escapeHtml(getCurrentHandle())}</b> editou a ficha de <b>${escapeHtml(fullName)}</b>.`);
       characterSubmit.disabled = false;
       closeCharacterModal();
@@ -1449,9 +1600,9 @@ characterSubmit.addEventListener("click", async () => {
     characterSubmit.disabled = true;
     characterError.textContent = "criando ficha...";
     try {
-      await campaignsAPI.createCharacter(currentCampaign.id, { fullName, gender, strength, weakness, photoFile, attrs, extra: percyExtra });
+      await campaignsAPI.createCharacter(currentCampaign.id, { fullName, gender, strength, weakness, photoFile, attrs, extra: extraData });
       const gd = percyExtra && percyExtra.percy ? godOf({ percy: percyExtra.percy }) : null;
-      logEvent("🆕", `<b>${escapeHtml(getCurrentHandle())}</b> criou a ficha de <b>${escapeHtml(fullName)}</b>${gd ? `, semideus filho(a) de <b>${escapeHtml(gd.n)}</b>` : ""}.`);
+      logEvent("🆕", `<b>${escapeHtml(getCurrentHandle())}</b> criou a ficha de <b>${escapeHtml(fullName)}</b>${gd ? `, semideus filho(a) de <b>${escapeHtml(gd.n)}</b>` : ""}${hgExtra ? `, tributo do <b>Distrito ${hgExtra.district}</b> (${escapeHtml(DISTRICT_BY_N[hgExtra.district].sector)})` : ""}.`);
       characterSubmit.disabled = false;
       closeCharacterModal();
     } catch (err) {
@@ -1470,7 +1621,8 @@ let itemModalCharacter = null;
 let itemFieldsCtl = null;
 function syncItemFields(){
   if (!itemFieldsCtl) return;
-  itemFieldsCtl.show(isPercy(currentCampaign) ? (itemPreset.value || itemCategory.value) : "");
+  const pv = itemPreset.value || "";
+  itemFieldsCtl.show(combatOn(currentCampaign) && !pv.startsWith("hg:") ? (pv || itemCategory.value) : "");
 }
 function openItemModal(character){
   itemModalCharacter = character;
@@ -1488,6 +1640,7 @@ function openItemModal(character){
   populateItemPresets();
   itemCategory.value = isPercy(currentCampaign) ? "arma" : "alimento";
   syncItemFields();
+  itemQuantity.disabled = false;
   itemQuantity.value = "1";
   itemError.textContent = "";
   itemModal.classList.remove("hidden");
@@ -1504,7 +1657,9 @@ itemSubmit.addEventListener("click", async () => {
 
   const name = itemName.value.trim();
   const description = itemDescription.value.trim();
-  const category = itemPreset.value || itemCategory.value; // erva = item pronto (categoria interna da erva)
+  const presetVal = itemPreset.value || "";
+  const hgPreset = presetVal.startsWith("hg:") ? presetVal.slice(3) : null;
+  const category = hgPreset ? (HE.itemInfo(hgPreset).category) : (presetVal || itemCategory.value); // erva = item pronto (categoria interna da erva)
   const quantity = parseInt(itemQuantity.value, 10);
 
   if (name.length < 1) {
@@ -1519,6 +1674,25 @@ itemSubmit.addEventListener("click", async () => {
     itemError.textContent = "backend ainda não carregou, tente novamente em instantes.";
     return;
   }
+  if (hgPreset) {
+    // item pronto da Cornucópia: arma, escudo ou suprimento já configurado (munição, usos, função...)
+    const freshChar = lastCharacterList.find((c) => c.id === itemModalCharacter.id) || itemModalCharacter;
+    let built;
+    try {
+      built = HE.buildItem(hgPreset, quantity);
+      const list = HE.addItemChecked(freshChar, built);
+      itemSubmit.disabled = true; itemError.textContent = "adicionando item...";
+      await campaignsAPI.patchCharacter(currentCampaign.id, itemModalCharacter.id, { items: list });
+      logEvent("📦", `<b>${escapeHtml(getCurrentHandle())}</b> adicionou <b>${escapeHtml(built.name)}</b> (x${quantity}) à ficha de <b>${escapeHtml(itemModalCharacter.fullName)}</b>.`);
+      itemSubmit.disabled = false;
+      closeItemModal();
+    } catch (err) {
+      console.error("Falha ao adicionar item pronto:", err);
+      itemSubmit.disabled = false;
+      itemError.textContent = describeError(err, "erro ao adicionar item.");
+    }
+    return;
+  }
   if (currentCampaign.diceSystem === "d20") {
     const freshChar = lastCharacterList.find((c) => c.id === itemModalCharacter.id) || itemModalCharacter;
     const capNow = carryCapacity(freshChar);
@@ -1530,7 +1704,7 @@ itemSubmit.addEventListener("click", async () => {
   }
 
   let percyExtra = {};
-  if (isPercy(currentCampaign)) {
+  if (combatOn(currentCampaign)) {
     const r = itemFieldsCtl.read(category);
     if (r.error) { itemError.textContent = r.error; return; }
     percyExtra = r.extra || {};
@@ -1675,9 +1849,24 @@ function renderCharacters(list){
   characterGrid.innerHTML = "";
   characterEmpty.hidden = list.length > 0;
 
-  list.forEach((character) => {
-    characterGrid.appendChild(renderCharacterCard(character));
-  });
+  if (isHunger(currentCampaign)) {
+    // fichas separadas por distrito (no máximo 3 tributos em cada)
+    HE.groupByDistrict(list).forEach(([n, arr]) => {
+      const total = HE.districtCount(lastCharacterList, n);
+      const sec = document.createElement("section");
+      sec.className = "hg-district-group";
+      sec.innerHTML = districtHeaderHtml(n, total);
+      const grid = document.createElement("div");
+      grid.className = "hg-district-grid";
+      arr.forEach((character) => grid.appendChild(renderCharacterCard(character)));
+      sec.appendChild(grid);
+      characterGrid.appendChild(sec);
+    });
+  } else {
+    list.forEach((character) => {
+      characterGrid.appendChild(renderCharacterCard(character));
+    });
+  }
 
   if (focusState) {
     const el = characterGrid.querySelector(`.injuries-textarea[data-char-id="${CSS.escape(focusState.id)}"]`);
@@ -1727,6 +1916,9 @@ function renderCharacterCard(character){
   const canEditHungerThirst = isCampaignCreator; // só o narrador ajusta fome/sede manualmente
   const hungerThirstOn = !!(currentCampaign && currentCampaign.hungerThirstEnabled);
   const percyOn = isPercy(currentCampaign);
+  const hgOn = isHunger(currentCampaign);
+  const combatMode = percyOn || hgOn;
+  const hgEx = hgOn ? maxExtra(character) : 0;
 
   const maxDmg = maxDamageOf(character);
   const damage = clampDamage(character.damage || 0, maxDmg);
@@ -1755,7 +1947,8 @@ function renderCharacterCard(character){
   const isExpanded = expandedCharacterIds.has(character.id);
 
   const card = document.createElement("div");
-  card.className = "character-card" + (dead ? " is-dead" : "") + (insane && !dead ? " is-insane" : "") + (percyOn ? " percy" : "");
+  card.className = "character-card" + (dead ? " is-dead" : "") + (insane && !dead ? " is-insane" : "") + (percyOn ? " percy" : "") + (hgOn ? " hg" : "");
+  if (hgOn && character.district && DISTRICT_BY_N[character.district]) card.style.setProperty("--dist", DISTRICT_BY_N[character.district].color);
   const pGod = percyOn ? godOf(character) : null;
   if (pGod) card.style.setProperty("--god", pGod.color);
 
@@ -1766,10 +1959,10 @@ function renderCharacterCard(character){
   const ctrlOpen = expandedControlIds.has(character.id);
   const hasPhoto = !!character.photoUrl;
   const nameSuffix = dead ? ` ${icon("skull")}` : (insane ? ` ${icon("spiral")}` : "");
-  const mancP = Math.min(100, ((50 + 5 * vigor) / maxDmg) * 100);
-  const chaoP = Math.min(100, ((80 + 5 * vigor) / maxDmg) * 100);
+  const mancP = Math.min(100, ((50 + 5 * vigor + hgEx) / maxDmg) * 100);
+  const chaoP = Math.min(100, ((80 + 5 * vigor + hgEx) / maxDmg) * 100);
   const stateTicks = bleedingOn
-    ? `<i class="tick state state-mancando" style="left:${mancP}%" title="Mancando a partir de ${50 + 5 * vigor + 1}% de dano"></i><i class="tick state state-chao" style="left:${chaoP}%" title="No Chão a partir de ${80 + 5 * vigor + 1}% de dano"></i>`
+    ? `<i class="tick state state-mancando" style="left:${mancP}%" title="Mancando a partir de ${50 + 5 * vigor + hgEx + 1}% de dano"></i><i class="tick state state-chao" style="left:${chaoP}%" title="No Chão a partir de ${80 + 5 * vigor + hgEx + 1}% de dano"></i>`
     : "";
 
   card.classList.toggle("is-open", isExpanded);
@@ -1834,7 +2027,7 @@ function renderCharacterCard(character){
           <div class="attr-chips">${ATTRS.map((a, i) => {
             const v = attrVals[i];
             const top = !attrAllEqual && attrTop > 0 && v === attrTop ? " peak" : "";
-            const inner = `<span class="attr-ico">${icon(a.key)}</span><span class="attr-label"><span class="full">${a.label}</span><span class="abbr" aria-hidden="true">${a.label.slice(0, 3)}</span></span><b class="attr-num">${v}</b>${percyOn ? attrBadge(character, a.key) : ""}${attrPips(v)}`;
+            const inner = `<span class="attr-ico">${icon(a.key)}</span><span class="attr-label"><span class="full">${a.label}</span><span class="abbr" aria-hidden="true">${a.label.slice(0, 3)}</span></span><b class="attr-num">${v}</b>${combatMode ? attrBadge(character, a.key) : ""}${hgOn ? attrPassiveBadge(character, a.key) : ""}${attrPips(v)}`;
             return (canRollAttrs && d20On)
               ? `<button type="button" class="attr-chip clickable${top} ${menuAttr === a.key ? "active" : ""}" data-action="attr-roll" data-attr="${a.key}" aria-label="${a.label} ${v}" title="${escapeHtml(a.desc)} — clique para rolar">${inner}<span class="attr-hint">rolar</span></button>`
               : `<span class="attr-chip${top}" aria-label="${a.label} ${v}" title="${escapeHtml(a.desc)}">${inner}</span>`;
@@ -1903,12 +2096,13 @@ function renderCharacterCard(character){
       ` : ""}
 
       ${percyOn ? percySections(character) : ""}
+      ${hgOn ? hungerSections(character) : ""}
 
       <section class="sheet-section">
         ${sectionTitle("user", percyOn ? "ferimentos" : "perfil")}
         ${percyOn ? "" : `<div class="character-traits">
           <div class="trait-chip trait-strength">
-            <span class="trait-chip-label">${icon("shield")} ponto forte</span>
+            <span class="trait-chip-label">${icon("shield")} ${hgOn ? "talento na arena" : "ponto forte"}</span>
             <span class="trait-chip-value">${escapeHtml(character.strength || "—")}</span>
           </div>
           <div class="trait-chip trait-weakness">
@@ -1941,17 +2135,17 @@ function renderCharacterCard(character){
                   <span class="item-qty">x${item.quantity}</span>
                 </div>
                 ${item.description ? `<span class="item-desc">${escapeHtml(item.description)}</span>` : ""}
-                ${percyOn ? itemMeta(item) : ""}
+                ${combatMode ? itemMeta(item) : ""}${hgOn ? hungerItemMeta(item) : ""}
               </div>
               <div class="item-actions">
-                ${percyOn ? itemActions(item, character) : ""}
+                ${combatMode ? itemActions(item, character) : ""}${hgOn ? hungerItemActions(item, character) : ""}
                 ${(herbsOn && canTransferItems && HERBS[item.category])
-                  ? `<button class="btn-mini" data-action="item-herb" data-item-id="${item.id}" ${(item.quantity > 0 && herbUsable(item.category, damage, bleedNow, sanity)) ? "" : "disabled"}>usar</button>`
+                  ? `<button class="btn-mini" data-action="item-herb" data-item-id="${item.id}" ${(item.quantity > 0 && herbUsable(item.category, damage, bleedNow, sanity, !!character.infection)) ? "" : "disabled"}>usar</button>`
                   : ""}
-                ${(canTransferItems && item.category === "cura")
+                ${(canTransferItems && item.category === "cura" && !item.key)
                   ? `<button class="btn-mini" data-action="item-cure" data-item-id="${item.id}" ${(item.quantity > 0 && (damage > 0 || bleedNow)) ? "" : "disabled"}>usar (cura)</button>`
                   : ""}
-                ${(hungerThirstOn && canTransferItems && (item.category === "alimento" || item.category === "bebida"))
+                ${(hungerThirstOn && canTransferItems && !item.key && (item.category === "alimento" || item.category === "bebida"))
                   ? `<button class="btn-mini" data-action="item-consume" data-item-id="${item.id}">consumir</button>`
                   : ""}
                 ${canManageItems ? `<button class="btn-mini" data-action="item-dec" data-item-id="${item.id}">-</button>` : ""}
@@ -1997,7 +2191,7 @@ function renderCharacterCard(character){
                 </div>
               </div>
             ` : ""}
-            ${percyOn ? percyControls(character) : ""}
+            ${percyOn ? percyControls(character) : ""}${hgOn ? hungerControls(character) : ""}
             ${(bleedingOn && !dead && !bleedNow) ? `
               <div class="damage-tool">
                 <span class="damage-tool-label">sangramento</span>
@@ -2292,7 +2486,8 @@ function renderCharacterCard(character){
     });
   }
 
-  if (percyOn) bindPercyCard(card, character);
+  if (combatMode) bindPercyCard(card, character);
+  if (hgOn) bindHungerCard(card, character);
   return card;
 }
 
@@ -2306,17 +2501,17 @@ function fmtCountdown(ms){
   return `${Math.floor(total / 60)}min ${String(total % 60).padStart(2, "0")}s`;
 }
 
-function herbUsable(category, damage, bleedNow, sanity){
+function herbUsable(category, damage, bleedNow, sanity, infected){
   const e = herbEffect([category]);
-  return (e.heal && damage > 0) || (e.stopBleed && !!bleedNow) || (e.sanity > 0 && sanity > 0);
+  return (e.heal && damage > 0) || (e.stopBleed && (!!bleedNow || !!infected)) || (e.sanity > 0 && sanity > 0);
 }
 
 function populateItemCategories(){
   // ervas não são categorias: aparecem como "item pronto" (ver populateItemPresets)
-  const percyOn = isPercy(currentCampaign);
+  const percyOn = isPercy(currentCampaign), hgOn = isHunger(currentCampaign);
   itemCategory.innerHTML = Object.entries(ITEM_CATEGORIES)
-    .filter(([key]) => !HERBS[key])
-    .filter(([key]) => percyOn ? !["alimento", "bebida"].includes(key) : !["armadura", "escudo", "magico"].includes(key))
+    .filter(([key]) => !HERBS[key] && key !== "erva_preta")
+    .filter(([key]) => hgOn ? key !== "magico" : (percyOn ? !["alimento", "bebida"].includes(key) : !["armadura", "escudo", "magico"].includes(key)))
     .map(([key, c]) => `<option value="${key}">${c.icon} ${c.label}</option>`).join("");
 }
 
@@ -2324,15 +2519,17 @@ function populateItemCategories(){
 let presetApplied = false;
 
 function herbPresetDescription(key){
-  const txt = herbEffectText([key], currentCampaign.curePercent ?? 30);
+  const txt = herbEffectText([key], currentCampaign.curePercent ?? 30) + (isHunger(currentCampaign) && key === "erva_vermelha" ? " e cura a infecção" : "");
   return txt.charAt(0).toUpperCase() + txt.slice(1) + ".";
 }
 
 function populateItemPresets(){
   const herbsOn = !!(currentCampaign && currentCampaign.herbsEnabled);
-  itemPresetBlock.hidden = !herbsOn;
+  const hgOn = isHunger(currentCampaign);
+  itemPresetBlock.hidden = !herbsOn && !hgOn;
   itemPreset.innerHTML = `<option value="">— item personalizado —</option>` +
-    Object.entries(HERBS).map(([k, h]) => `<option value="${k}">${h.icon} ${h.label}</option>`).join("");
+    (hgOn ? catalogPresets() : "") +
+    (herbsOn ? `<optgroup label="🌿 Ervas">${Object.entries(HERBS).map(([k, h]) => `<option value="${k}">${h.icon} ${h.label}</option>`).join("")}</optgroup>` : "");
   itemPreset.value = "";
   itemCategoryBlock.hidden = false;
   presetApplied = false;
@@ -2340,7 +2537,13 @@ function populateItemPresets(){
 
 itemPreset.addEventListener("change", () => {
   const key = itemPreset.value;
-  if (key) {
+  if (key && key.startsWith("hg:")) {
+    const info = HE.itemInfo(key.slice(3));
+    itemName.value = info.name;
+    itemDescription.value = info.desc;
+    itemCategoryBlock.hidden = true;
+    presetApplied = true;
+  } else if (key) {
     itemName.value = HERBS[key].label;
     itemDescription.value = herbPresetDescription(key);
     itemCategoryBlock.hidden = true;
@@ -2357,6 +2560,10 @@ function applyHerbUse(character, consumeIds, types, onError){
   const max = maxDamageOf(character);
   const healPct = currentCampaign.curePercent ?? 30;
   const e = herbEffect(types, healPct);
+  if (isHunger(currentCampaign)) {      // passiva do Distrito 11: ervas mais eficientes
+    const hb = HE.herbBonusPct(character);
+    if (hb) { e.healAmount = Math.round(e.healAmount * (100 + hb) / 100); e.sanity = Math.round(e.sanity * (100 + hb) / 100); }
+  }
   const oldDamage = clampDamage(character.damage || 0, max);
   const oldSanity = Math.max(0, Math.min(100, Math.round(character.sanity || 0)));
 
@@ -2375,6 +2582,7 @@ function applyHerbUse(character, consumeIds, types, onError){
   const parts = [];
   if (e.heal) { const nd = clampDamage(oldDamage - e.healAmount, max); patch.damage = nd; parts.push(`vida ${oldDamage}% → ${nd}%`); }
   if (e.stopBleed && character.bleeding) { patch.bleeding = null; parts.push("sangramento parado"); }
+  if (e.stopBleed && character.infection) { patch.infection = null; parts.push("infecção curada"); }
   if (e.sanity) { const ns = Math.max(0, oldSanity - e.sanity); patch.sanity = ns; parts.push(`sanidade ${oldSanity}% → ${ns}%`); }
 
   if (e.bonus) parts.push(`mistura de ${types.length} ervas: +${e.bonus}% de eficiência`);
@@ -2514,13 +2722,14 @@ function renderRulesPanel(campaign){
   const htOn = !!campaign.hungerThirstEnabled;
   const d20 = campaign.diceSystem === "d20";
   const percyRule = !!campaign.percyEnabled && d20;
+  const hgRule = !!campaign.hungerGamesEnabled && d20;
 
-  if (!isNarrator && !sanityOn && !bleedOn && !herbsOn && !htOn && !d20 && !percyRule) {
+  if (!isNarrator && !sanityOn && !bleedOn && !herbsOn && !htOn && !d20 && !percyRule && !hgRule) {
     rulesPanelEl.hidden = true; rulesPanelEl.innerHTML = "";
     return;
   }
 
-  const summary = [d20 ? "D20" : "D6", percyRule && "Percy Jackson", htOn && "fome/sede", sanityOn && "sanidade", bleedOn && "sangramento", herbsOn && "ervas"].filter(Boolean).join(" · ");
+  const summary = [d20 ? "D20" : "D6", percyRule && "Percy Jackson", hgRule && "Jogos Vorazes", htOn && "fome/sede", sanityOn && "sanidade", bleedOn && "sangramento", herbsOn && "ervas"].filter(Boolean).join(" · ");
 
   const row = (key, on, label, desc, disabled) => `
     <div class="rule-row">
@@ -2546,7 +2755,7 @@ function renderRulesPanel(campaign){
           ? `<select class="modal-select rule-select" data-rule-dice><option value="d6" ${!d20 ? "selected" : ""}>D6</option><option value="d20" ${d20 ? "selected" : ""}>D20 + atributos</option></select>`
           : `<span class="ht-status-badge on">${d20 ? "D20" : "D6"}</span>`}
       </div>
-      ${row("hunger", htOn, "🍗 fome &amp; 💧 sede", "Cada ficha ganha duas barras de 3 níveis. Alimentos e bebidas do inventário recuperam 1 nível.", false)}
+      ${row("hunger", htOn, "🍗 fome &amp; 💧 sede", "Cada ficha ganha duas barras de 3 níveis. Alimentos e bebidas do inventário recuperam 1 nível.", hgRule)}
       ${isNarrator && htOn ? `
         <div class="ht-penalty-row">
           <span class="ht-penalty-label">dano ao perder fome/sede já zerada:</span>
@@ -2559,9 +2768,10 @@ function renderRulesPanel(campaign){
           <button class="btn-mini" id="htBulkHungerMinus">🍗 -1 fome</button>
           <button class="btn-mini" id="htBulkThirstMinus">💧 -1 sede</button>
         </div>` : ""}
-      ${row("sanity", sanityOn, "🌀 sanidade", "Ao chegar em 100% o personagem fica insano: perde o juízo, não luta direito, pode ferir os colegas e chama atenção.", false)}
-      ${row("bleeding", bleedOn, "🩸 sangramento", "Estados ligados ao dano: Normal (até 50%), Mancando (51–80%) e No Chão (81–99%). O narrador pode marcar um personagem como Sangrando: 5% de dano a cada 10 min durante 1 hora (30% no total).", false)}
-      ${row("herbs", herbsOn, "🌿 ervas", "Exige sanidade ou sangramento ativos. Itens prontos: 🌿 Verde restaura vida, mas não para o sangramento · 🌺 Vermelha para o sangramento · 🫐 Azul restaura 20% de sanidade · podem ser misturadas 2 ou 3 de cores diferentes (+25% de eficiência com 2, +35% com 3) — narrador ou dono da ficha.", !(sanityOn || bleedOn) && !herbsOn)}
+      ${row("sanity", sanityOn, "🌀 sanidade", "Ao chegar em 100% o personagem fica insano: perde o juízo, não luta direito, pode ferir os colegas e chama atenção.", hgRule)}
+      ${row("bleeding", bleedOn, "🩸 sangramento", "Estados ligados ao dano: Normal (até 50%), Mancando (51–80%) e No Chão (81–99%). O narrador pode marcar um personagem como Sangrando: 5% de dano a cada 10 min durante 1 hora (30% no total).", hgRule)}
+      ${row("herbs", herbsOn, "🌿 ervas", "Exige sanidade ou sangramento ativos. Itens prontos: 🌿 Verde restaura vida, mas não para o sangramento · 🌺 Vermelha para o sangramento · 🫐 Azul restaura 20% de sanidade · podem ser misturadas 2 ou 3 de cores diferentes (+25% de eficiência com 2, +35% com 3) — narrador ou dono da ficha.", (!(sanityOn || bleedOn) && !herbsOn) || hgRule)}
+      ${row("hunger_games", hgRule, "🏹 sistema Jogos Vorazes", "Arena de tributos: <b>Distrito</b> (1–12, máx. 3 fichas cada) com passiva, <b>Cornucópia</b> com armas e suprimentos limitados, <b>presentes de patrocinadores</b> sorteados por local, <b>locais da arena</b> (norte, sul, leste, oeste), <b>eventos de arena</b> por região, <b>Ameaças</b> (NPCs e bestantes), infecção e <b>Erva Preta</b>. Exige D20. Liga também fome/sede, sanidade, sangramento e ervas, e <b>muda todas as fichas</b>. Substitui o Percy Jackson.", !d20)}
       ${row("percy", percyRule, "🏛️ sistema Percy Jackson", "Fichas de semideuses: parente divino (16 deuses), poderes, presente divino, soco, armas e armaduras, dracmas e ataques com alvo. Exige D20. <b>Muda todas as fichas da campanha</b> (ponto forte/fraco viram personalidade; alimento e bebida saem do inventário).", !d20)}
       <p class="rules-error" id="htError"></p>
     </div>`;
@@ -2593,6 +2803,12 @@ function renderRulesPanel(campaign){
       if (key === "percy") {
         if (!percyRule && !confirm("Ativar o sistema Percy Jackson?\n\nIsso muda TODAS as fichas da campanha: ponto forte/fraco viram personalidade, cada semideus passa a ter parente divino, poderes, presente divino, soco e dracmas, e alimento/bebida saem do inventário.\n\nFichas já existentes precisam que o dono escolha o parente divino (botão ✎ na ficha).")) return;
         patch.percyEnabled = !percyRule; label = "Percy Jackson (semideuses)";
+        if (patch.percyEnabled) patch.hungerGamesEnabled = false;
+      }
+      if (key === "hunger_games") {
+        if (!hgRule && !confirm("Ativar o sistema Jogos Vorazes?\n\nIsso muda TODAS as fichas da campanha: cada tributo passa a ter Distrito (máx. 3 por distrito) e passiva, a Cornucópia e a arena ganham painel próprio, o bestiário vira Ameaças e a campanha liga fome/sede, sanidade, sangramento e ervas.\n\nFichas já existentes precisam que o dono escolha o distrito (botão ✎ na ficha). O sistema Percy Jackson será desligado.")) return;
+        patch.hungerGamesEnabled = !hgRule; label = "Jogos Vorazes";
+        if (patch.hungerGamesEnabled) Object.assign(patch, { percyEnabled: false, hungerThirstEnabled: true, sanityEnabled: true, bleedingEnabled: true, herbsEnabled: true });
       }
       const turnedOn = Object.values(patch)[0];
       btn.disabled = true;
@@ -2610,7 +2826,7 @@ function renderRulesPanel(campaign){
   const diceSel = rulesPanelEl.querySelector("[data-rule-dice]");
   if (diceSel) diceSel.addEventListener("change", async () => {
     try {
-      await campaignsAPI.patchCampaign(campaign.id, diceSel.value === "d20" ? { diceSystem: "d20" } : { diceSystem: diceSel.value, percyEnabled: false });
+      await campaignsAPI.patchCampaign(campaign.id, diceSel.value === "d20" ? { diceSystem: "d20" } : { diceSystem: diceSel.value, percyEnabled: false, hungerGamesEnabled: false });
       logEvent("⚙️", `<b>${escapeHtml(getCurrentHandle())}</b> mudou o sistema de dados da campanha para <b>${diceSel.value === "d20" ? "D20 + atributos" : "D6"}</b>.`);
     } catch (err) {
       console.error("Falha ao mudar o sistema de dados:", err);
@@ -2923,6 +3139,19 @@ initPercy({
   describeError,
   disadv: (character) => disadvantageFor(character),
 });
+
+initHunger({
+  campaign: () => currentCampaign,
+  characters: () => lastCharacterList,
+  api: campaignsAPI,
+  log: (icon, text) => logEvent(icon, text),
+  handle: () => getCurrentHandle(),
+  isNarrator: () => !!currentCampaign && isCurrentUserCampaignCreator(currentCampaign),
+  isMine: (character) => isMineForNotify(character),
+  describeError,
+  disadv: (character) => disadvantageFor(character),
+});
+initArena();
 
 initScene({
   campaign: () => currentCampaign,

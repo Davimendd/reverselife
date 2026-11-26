@@ -4,9 +4,20 @@
 // Convenção: 1 ponto de dano = 1% de dano na ficha.
 // ============================================================
 
-import { ATTRS, attrValue, D20_TESTS, rollD20, maxDamageOf } from "./rules.js";
+import { ATTRS, attrValue, D20_TESTS, rollD20, maxDamageOf, passiveOf } from "./rules.js";
+import { BLEED_CHANCE_CRIT_BONUS } from "./hunger-data.js";
 
 export const PUNCH = { id: "punch", l: "Soco", t: "forca", melee: true, foe: 1, dmg: "1d4" };
+
+// dano fixo extra de armas vindo da passiva do distrito (Jogos Vorazes): atk = { range, tags }
+export function passiveWeaponBonus(ch, atk){
+  const p = passiveOf(ch);
+  if (!p || !atk) return 0;
+  let n = 0;
+  if (p.dmg && p.dmg.melee && atk.range !== "ranged") n += p.dmg.melee;
+  if (p.dmgTag && (atk.tags || []).some((t) => p.dmgTag.tags.includes(t))) n += p.dmgTag.n;
+  return n;
+}
 
 const uid = () => `fx_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 const attrLabel = (k) => (ATTRS.find((a) => a.key === k) || { label: k }).label;
@@ -70,7 +81,8 @@ export function makeFx(def, src, now = Date.now()){
 export function pruneFx(char, now = Date.now()){
   const gone = [], keep = [];
   (char.fx || []).forEach((f) => {
-    const dead = (f.until && f.until <= now) || (f.acts != null && f.acts <= 0) || (f.hits != null && f.hits <= 0) || (f.absorb != null && f.absorb <= 0);
+    const pending = f.sched && f.sched.length;     // efeitos agendados (Jogos Vorazes) só somem depois de cumpridos
+    const dead = !pending && ((f.until && f.until <= now) || (f.acts != null && f.acts <= 0) || (f.hits != null && f.hits <= 0) || (f.absorb != null && f.absorb <= 0));
     (dead ? gone : keep).push(f);
   });
   const endDmg = gone.reduce((s, f) => s + ((f.until && f.until <= now && f.end && f.end.dmg) || 0), 0);
@@ -167,13 +179,21 @@ export function applyPacket(char, packet, now = Date.now(), rng = Math.random){
   const patch = {};
 
   if (packet.dmg > 0) {
-    const r = resolveIncoming({ ...char, fx }, packet.dmg, now, rng);
+    const r = packet.pierce
+      ? { final: Math.round(packet.dmg), fx, items: char.items, steps: ["ignora armadura"] }       // ex.: erva preta engolida
+      : resolveIncoming({ ...char, fx }, packet.dmg, now, rng);
     fx = r.fx;
     items = r.items;
     steps.push(...r.steps);
     damage = Math.min(max, damage + r.final);
     if (r.items.some((it, i) => it !== (char.items || [])[i])) patch.items = r.items;
     packet.absorbed = packet.dmg - r.final;
+    // sangramento (armas afiadas): só em fichas de personagem, só se o golpe causou dano de verdade
+    if (packet.bleed > 0 && r.final > 0 && !char.hpMax && !char.bleeding && damage < max && rng() * 100 < packet.bleed) {
+      patch.bleeding = { startedAt: now, ticksApplied: 0 };
+      packet.bled = true;
+      steps.push("🩸 o golpe abriu um sangramento");
+    }
   }
   if (packet.heal > 0) damage = Math.max(0, damage - packet.heal);
   if (packet.stopBleed && char.bleeding) patch.bleeding = null;
@@ -182,7 +202,7 @@ export function applyPacket(char, packet, now = Date.now(), rng = Math.random){
   fx = pruneFx({ fx }, now).fx;
   patch.fx = fx;
   if (damage !== before) patch.damage = damage;
-  return { patch, before, after: damage, max, steps, absorbed: packet.absorbed || 0 };
+  return { patch, before, after: damage, max, steps, absorbed: packet.absorbed || 0, bled: !!packet.bled };
 }
 
 // ---------- planejamento de uma ação (poder, presente, soco, arma, objeto mágico) ----------
@@ -215,6 +235,9 @@ export function planAction({ caster, foes = [], allies = [], entry, act, dcKey =
   const extra = [];
   if (act.dmg || dmgDice) fxDmgBonus(caster, meleeLike, now).forEach((d) => extra.push(d));
   const forcaBonus = meleeLike ? effAttr(caster, "forca", now) : 0;
+  const passiveFlat = act.hg ? passiveWeaponBonus(caster, { range: act.ranged ? "ranged" : "melee", tags: act.tags }) : 0;
+  out.passiveFlat = passiveFlat;
+  const bleedChance = act.bleed > 0 ? Math.min(95, act.bleed + (out.crit ? BLEED_CHANCE_CRIT_BONUS : 0)) : 0;
 
   // contestação (rs.vs === "c"): total do conjurador
   let casterContest = null;
@@ -235,9 +258,11 @@ export function planAction({ caster, foes = [], allies = [], entry, act, dcKey =
     }
     const dealDmg = dmgDice && (!act.dmgFail || !t.resisted);
     if (dealDmg) {
-      const base = rollDice([dmgDice, ...extra].join("+") + (forcaBonus ? `+${forcaBonus}` : ""), rng);
+      const base = rollDice([dmgDice, ...extra].join("+") + (forcaBonus ? `+${forcaBonus}` : "") + (passiveFlat ? `+${passiveFlat}` : ""), rng);
       const total = Math.max(0, Math.round(base.total * mult * out.mult));
       t.dmg = { total, text: base.text, mult: mult * out.mult };
+      if (bleedChance) t.bleed = bleedChance;
+      if (act.pierce) t.pierce = true;
     }
     if (!act.rs || !t.resisted) (act.ap || []).forEach((d) => t.fx.push(makeFx(d, src, now)));
     else (act.apOk || []).forEach((d) => t.fx.push(makeFx(d, src, now)));
