@@ -2210,20 +2210,13 @@ function renderCharacterCard(character){
             ${canManageItems ? `<button class="btn-mini" data-action="add-item">+ item</button>` : ""}
           </span>
         </div>
+        ${limitsOn ? `<div class="cap-bar ${carried >= cap ? "full" : (carried >= cap * 0.75 ? "high" : "")}" title="${carried} de ${cap} espaços usados"><i style="width:${Math.min(100, Math.round(cap ? (carried / cap) * 100 : 0))}%"></i></div>` : ""}
         <div class="inventory-list">
-          ${(character.items || []).map((item) => `
-            <div class="item-row" data-item-id="${item.id}">
-              <span class="item-icon">${categoryIcon(item.category)}</span>
-              <div class="item-info">
-                <div class="item-name-row">
-                  <span class="item-name">${escapeHtml(item.name)}</span>
-                  <span class="item-qty">x${item.quantity}</span>
-                </div>
-                ${item.description ? `<span class="item-desc">${escapeHtml(item.description)}</span>` : ""}
-                ${combatMode ? itemMeta(item) : ""}${hgOn ? hungerItemMeta(item) : ""}
-              </div>
-              <div class="item-actions">
-                ${combatMode ? itemActions(item, character) : ""}${hgOn ? hungerItemActions(item, character) : ""}
+          ${(character.items || []).map((item) => {
+            const tags = `${combatMode ? itemMeta(item) : ""}${hgOn ? hungerItemMeta(item) : ""}`;
+            const catCls = HERBS[item.category] ? "erva" : item.category;
+            const desc = item.description || "";
+            const main = `${combatMode ? itemActions(item, character) : ""}${hgOn ? hungerItemActions(item, character) : ""}
                 ${(herbsOn && canTransferItems && HERBS[item.category])
                   ? `<button class="btn-mini" data-action="item-herb" data-item-id="${item.id}" ${(item.quantity > 0 && herbUsable(item.category, damage, bleedNow, sanity, !!character.infection)) ? "" : "disabled"}>usar</button>`
                   : ""}
@@ -2232,16 +2225,28 @@ function renderCharacterCard(character){
                   : ""}
                 ${(hungerThirstOn && canTransferItems && !item.key && (item.category === "alimento" || item.category === "bebida"))
                   ? `<button class="btn-mini" data-action="item-consume" data-item-id="${item.id}">consumir</button>`
-                  : ""}
-                ${canManageItems ? `<button class="btn-mini" data-action="item-dec" data-item-id="${item.id}">-</button>` : ""}
-                ${canManageItems ? `<button class="btn-mini" data-action="item-inc" data-item-id="${item.id}">+</button>` : ""}
-                ${canTransferItems ? `<button class="btn-mini" data-action="item-transfer" data-item-id="${item.id}">↗</button>` : ""}
-                ${canManageItems ? `<button class="btn-mini" data-action="item-delete" data-item-id="${item.id}">🗑️</button>` : ""}
-              </div>
-            </div>
-          `).join("")}
+                  : ""}`;
+            const manage = `${canManageItems ? `<button class="btn-mini" data-action="item-dec" data-item-id="${item.id}" title="tirar 1">−</button>` : ""}
+                ${canManageItems ? `<button class="btn-mini" data-action="item-inc" data-item-id="${item.id}" title="adicionar 1">+</button>` : ""}
+                ${canTransferItems ? `<button class="btn-mini" data-action="item-transfer" data-item-id="${item.id}" title="enviar para outra ficha">↗</button>` : ""}
+                ${canManageItems ? `<button class="btn-mini" data-action="item-delete" data-item-id="${item.id}" title="excluir">🗑️</button>` : ""}`;
+            return `
+            <article class="item-row cat-${catCls}" data-item-id="${item.id}">
+              <header class="item-head">
+                <span class="item-icon">${categoryIcon(item.category)}</span>
+                <span class="item-name">${escapeHtml(item.name)}</span>
+                <span class="item-qty" title="quantidade">×${item.quantity}</span>
+              </header>
+              ${tags ? `<div class="item-tags">${tags}</div>` : ""}
+              ${desc ? `<p class="item-desc ${desc.length > 90 ? "long" : ""}" ${desc.length > 90 ? 'title="toque para ler tudo" data-action="toggle-desc"' : ""}>${escapeHtml(desc)}</p>` : ""}
+              ${(main.trim() || manage.trim()) ? `<footer class="item-actions">
+                <span class="item-main">${main}</span>
+                <span class="item-manage">${manage}</span>
+              </footer>` : ""}
+            </article>`;
+          }).join("")}
         </div>
-        ${(character.items || []).length === 0 ? `<p class="inventory-empty">nenhum item.</p>` : ""}
+        ${(character.items || []).length === 0 ? `<p class="inventory-empty"><span>🎒</span>mochila vazia${canManageItems ? " — use <b>+ item</b> para equipar este personagem." : "."}</p>` : ""}
       </section>
 
       ${canEditDamage ? `
@@ -2315,6 +2320,7 @@ function renderCharacterCard(character){
     else expandedCharacterIds.delete(character.id);
   });
 
+  card.querySelectorAll('[data-action="toggle-desc"]').forEach((d) => d.addEventListener("click", () => d.classList.toggle("open")));
   const ctrlToggle = card.querySelector('[data-action="toggle-controls"]');
   if (ctrlToggle) {
     ctrlToggle.addEventListener("click", () => {

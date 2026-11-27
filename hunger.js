@@ -162,17 +162,18 @@ export function hungerSections(character){
 
 // ---------- informações e botões dos itens ----------
 export function hungerItemMeta(item){
-  const bits = [];
-  if (item.usesMax > 1) bits.push(`${item.uses ?? item.usesMax}/${item.usesMax} usos`);
+  const chips = [];
+  const chip = (cls, html, title) => chips.push(`<span class="item-tag ${cls}"${title ? ` title="${esc(title)}"` : ""}>${html}</span>`);
+  if (item.usesMax > 1) chip("", `🔸 ${item.uses ?? item.usesMax}/${item.usesMax} usos`);
   const t = HE.fnOf(item) && HE.fnOf(item).type;
   if (t === "drink" || t === "eat") {
-    if (item.contam) bits.push("☣ contaminado (50% de infecção)");
-    else if (item.safe) bits.push(item.category === "bebida" ? "💧 purificada" : "🍳 cozido");
-    else bits.push(`⚠ ${HE.INFECTION_CHANCE}% de infecção`);
+    if (item.contam) chip("bad", "☣ contaminado · 50% infecção", "a Chuva Escarlate contaminou este item");
+    else if (item.safe) chip("good", item.category === "bebida" ? "💧 purificada" : "🍳 cozido", "sem risco de infecção");
+    else chip("warn", `⚠ ${HE.INFECTION_CHANCE}% infecção`, "purifique a água ou cozinhe a comida para zerar o risco");
   }
-  if (item.capBonus) bits.push(`+${item.capBonus} de espaço · não ocupa lugar`);
-  if (item.heal) bits.push(`+${item.heal} HP`);
-  return bits.length ? `<span class="pz-item-meta">${bits.join(" · ")}</span>` : "";
+  if (item.capBonus) chip("good", `🎒 +${item.capBonus} espaço`, "vestida: não ocupa lugar no inventário");
+  if (item.heal) chip("good", `💉 +${item.heal} HP`);
+  return chips.join("");
 }
 
 const FN_LABEL = { drink: "beber", eat: "comer", cure: "usar", antiseptic: "aplicar", purify: "purificar água", fire: "acender fogueira", buff: "usar", fish: "pescar", cook: "cozinhar/ferver", fill: "encher", antidote: "tomar antídoto", blackherb: "" };

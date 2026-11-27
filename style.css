@@ -3347,3 +3347,92 @@ body.pzfx-shake{ animation:pzShake .6s ease-in-out; }
 .narr-hint{ flex-basis:100%; color:var(--mute); font-size:0.7rem; line-height:1.4; }
 .narr-err{ flex-basis:100%; color:var(--blood); font-size:0.74rem; }
 .narr-err:empty{ display:none; }
+
+/* ============================================================
+   INVENTÁRIO — itens em cartões (nome, etiquetas, descrição, ações)
+   ============================================================ */
+.inventory-list{ display:flex; flex-direction:column; gap:8px; }
+.item-row{
+  --cat:#5a5a5a;
+  display:flex; flex-direction:column; align-items:stretch; gap:6px;
+  padding:9px 10px 8px 12px; position:relative;
+  border:1px solid var(--line); border-left:3px solid var(--cat); border-radius:5px;
+  background:linear-gradient(180deg, color-mix(in srgb, var(--cat) 7%, var(--black)), var(--black) 60%);
+  transition:border-color .15s, background .15s;
+}
+.item-row:hover{ border-color:color-mix(in srgb, var(--cat) 55%, var(--line)); border-left-color:var(--cat); }
+.item-row.cat-arma{ --cat:#d83a3a; }
+.item-row.cat-alimento{ --cat:#e0a23c; }
+.item-row.cat-bebida{ --cat:#4fb8d6; }
+.item-row.cat-cura{ --cat:#46c27a; }
+.item-row.cat-erva{ --cat:#7fd66a; }
+.item-row.cat-erva_preta{ --cat:#a368d6; }
+.item-row.cat-armadura, .item-row.cat-escudo{ --cat:#8fa3b8; }
+.item-row.cat-equipamento{ --cat:#b09a6a; }
+.item-row.cat-magico{ --cat:#b57cf0; }
+
+.item-head{ display:flex; align-items:center; gap:8px; min-width:0; }
+.item-icon{ font-size:18px; line-height:1; flex:none; width:24px; text-align:center; }
+.item-name{ flex:1; min-width:0; font-size:13px; font-weight:700; color:var(--off); line-height:1.25; overflow-wrap:anywhere; }
+.item-qty{
+  flex:none; font-family:var(--mono); font-size:12px; font-weight:700; color:var(--off);
+  padding:1px 8px; border-radius:999px; background:color-mix(in srgb, var(--cat) 22%, #0a0a0a); border:1px solid color-mix(in srgb, var(--cat) 50%, var(--line));
+}
+
+/* etiquetas (dano, sangramento, munição, usos, infecção...) */
+.item-tags{ display:flex; flex-wrap:wrap; gap:4px; }
+.item-tag{
+  display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:4px;
+  font-family:var(--mono); font-size:10.5px; line-height:1.35; white-space:nowrap;
+  color:var(--off); background:#141414; border:1px solid var(--line);
+}
+.item-tag.dmg{ color:#ffd9a0; border-color:#6a4a1c; background:#1b1408; font-weight:700; }
+.item-tag.bleed{ color:#ff9a9a; border-color:#5a2020; background:#1a0c0c; }
+.item-tag.poison{ color:#d6a8ff; border-color:#4a2a66; background:#150c1c; }
+.item-tag.magic{ color:#d9bfff; border-color:#4a3a6a; }
+.item-tag.good{ color:#8fe3a8; border-color:#245a36; background:#0c1a11; }
+.item-tag.warn{ color:#f0c36a; border-color:#5a4a1c; background:#1a1608; }
+.item-tag.bad{ color:#ff8a8a; border-color:#6a2222; background:#1c0c0c; }
+.item-tag.mute{ color:var(--mute); }
+
+/* descrição: curta e legível; textos longos recolhem em 2 linhas (toque para abrir) */
+.item-desc{
+  margin:0; font-size:12px; line-height:1.45; color:#a89f9f; overflow-wrap:break-word; word-break:normal; hyphens:auto;
+}
+.item-desc.long{
+  cursor:pointer; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.item-desc.long::after{ content:""; }
+.item-desc.long.open{ display:block; -webkit-line-clamp:unset; }
+.item-desc.long:not(.open):hover{ color:var(--off); }
+
+/* ações: principais à esquerda, gerenciar (− + ↗ 🗑) à direita */
+.item-actions{
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 10px;
+  margin-top:2px; padding-top:7px; border-top:1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  flex:none; width:auto;
+}
+.item-main, .item-manage{ display:inline-flex; flex-wrap:wrap; gap:5px; align-items:center; }
+.item-manage{ margin-left:auto; }
+.item-actions .btn-mini{ flex:0 0 auto; min-width:30px; padding:4px 9px; font-size:12px; text-align:center; }
+.item-main .btn-mini{ padding:5px 11px; }
+.item-main:empty{ display:none; }
+
+/* cabeçalho e barra de capacidade do inventário */
+.inventory-box .inventory-head{ margin-bottom:6px; }
+.cap-bar{ height:5px; border-radius:3px; background:#141414; border:1px solid var(--line); overflow:hidden; margin-bottom:10px; }
+.cap-bar > i{ display:block; height:100%; background:linear-gradient(90deg, #8a6a2a, var(--gold)); transition:width .3s; }
+.cap-bar.high > i{ background:linear-gradient(90deg, #b8741c, #ffa23c); }
+.cap-bar.full > i{ background:linear-gradient(90deg, #8f1616, var(--red-bright)); }
+.inventory-empty{
+  display:flex; align-items:center; gap:8px; padding:14px 12px; margin:0;
+  border:1px dashed var(--line); border-radius:5px; color:var(--mute); font-size:12px; background:#0a0a0a;
+}
+.inventory-empty span{ font-size:20px; opacity:0.7; }
+
+@media (max-width:640px){
+  .item-actions{ justify-content:flex-start; }
+  .item-main, .item-manage{ width:auto; }
+  .item-manage{ margin-left:auto; }
+  .item-actions .btn-mini{ flex:0 0 auto; padding:8px 12px; }
+}

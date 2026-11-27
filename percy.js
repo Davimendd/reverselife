@@ -151,18 +151,30 @@ export function attrBadge(character, key){
 export const attrBonusOf = (character, key) => (combatOn(ctx.campaign()) ? EN.fxMod(character, key) : 0);
 
 // ---------- itens do inventário ----------
+// "etiquetas" do item (dano, sangramento, munição, durabilidade...): devolve só os chips; quem chama coloca no .item-tags
 export function itemMeta(item){
-  const parts = [];
+  const chips = [];
+  const chip = (cls, html, title) => chips.push(`<span class="item-tag ${cls}"${title ? ` title="${esc(title)}"` : ""}>${html}</span>`);
   if (item.atk) {
-    const a = item.atk, extra = [];
-    if (a.bleed > 0) extra.push(`🩸 ${a.bleed}% de sangramento`); else if (a.bleed === 0) extra.push("sem sangramento");
-    if (a.ammo != null) extra.push(`🏹 munição ${a.ammo}/${a.ammoMax ?? a.ammo}`);
-    if (a.coated) extra.push("🖤 envenenada: +1 dado no próximo ataque");
-    parts.push(`${esc(a.coated ? coatDice(a.dmg) : a.dmg)} · ${attrLabel(a.attr)} · ${a.range === "ranged" ? "à distância" : "corpo a corpo"}${extra.length ? `<br>${extra.join(" · ")}` : ""}`);
+    const a = item.atk;
+    chip("dmg", `🎲 ${esc(a.coated ? coatDice(a.dmg) : a.dmg)}`, "dano");
+    chip("", `${attrLabel(a.attr)}`, "atributo do teste");
+    chip("", a.range === "ranged" ? "🎯 à distância" : "✊ corpo a corpo");
+    if (a.bleed > 0) chip("bleed", `🩸 ${a.bleed}%`, "chance de causar sangramento");
+    else if (a.bleed === 0) chip("mute", "sem sangramento");
+    if (a.ammo != null) chip(a.ammo <= 0 ? "bad" : "", `🏹 ${a.ammo}/${a.ammoMax ?? a.ammo}`, "munição");
+    if (a.coated) chip("poison", "🖤 envenenada: +1 dado", "o próximo ataque causa +1 dado de dano");
   }
-  if (item.def) parts.push(item.def.broken ? "💥 quebrado" : `absorve ${item.def.absorb} por golpe · durabilidade ${item.def.hp}/${item.def.hpMax}${item.def.equipped ? " · equipado" : ""}`);
-  if (item.mg) parts.push(`✨ ${esc(item.mg.text)}${item.mg.dmg ? ` · ${esc(item.mg.dmg)}` : ""}`);
-  return parts.length ? `<span class="pz-item-meta">${parts.join("<br>")}</span>` : "";
+  if (item.def) {
+    if (item.def.broken) chip("bad", "💥 quebrado");
+    else {
+      chip("", `🛡️ absorve ${item.def.absorb}`, "dano absorvido por golpe");
+      chip("", `🔧 ${item.def.hp}/${item.def.hpMax}`, "durabilidade");
+      if (item.def.equipped) chip("good", "✔ equipado");
+    }
+  }
+  if (item.mg) chip("magic", `✨ ${esc(item.mg.text)}${item.mg.dmg ? ` · ${esc(item.mg.dmg)}` : ""}`);
+  return chips.join("");
 }
 const attrLabel = EN.attrLabel;
 
