@@ -379,3 +379,13 @@ Seção própria no fim da página da campanha, só existe com o sistema Percy J
 - Entre numa campanha e use o painel `/dev/dados`: no D6, escolha a tabela e clique em **ROLAR D6**; no D20, clique em **ROLAR D20 (PURO)** ou clique num atributo da sua ficha e escolha o teste.
 - O resultado aparece no painel e é registrado no histórico da campanha, com o nome de quem rolou.
 - A rolagem exige estar logado; só o narrador pode escolher o sistema de dados da campanha (D6 ou D20).
+
+
+## Jogos Vorazes — visual da arena (efeitos)
+
+- **Mapa da arena** (painel da arena): Cornucópia no centro e Norte/Leste/Sul/Oeste ao redor. Mostra os locais cadastrados, os presentes caídos (🪂), os tributos de cada região (pontos coloridos pelo distrito) e a região atingida **pisca** na cor do evento enquanto ele está ativo.
+- **Paraquedas animado**: quando cai (ou é revelado) um presente, um paraquedas prateado desce pela tela de todos e o card ganha brilho dourado por alguns segundos.
+- **Tributo caído**: ao chegar no limite de dano, todos que estão com a campanha aberta ouvem o canhão e veem uma tela escura com foto, nome e distrito (fecha sozinha ou ao clicar).
+- **Clima dos eventos**: efeito curto (cerca de 8 s) e translúcido, abaixo do cabeçalho e dos modais para não atrapalhar a leitura: chuva vermelha, flocos, cinzas, tremor, onda, canários, olhos dos predadores, esporos, brilho dourado e sirene. A Bomba Aérea ganha um clarão com rachaduras e tremor 1 minuto depois do alerta (só para quem estava com a campanha aberta no alerta).
+- **Tributos restantes**: contador no topo da campanha, com um ponto por tributo e a lista das últimas baixas.
+- Os efeitos só tocam para eventos e presentes **novos** (ao abrir a campanha nada é repetido). Respeitam "movimento reduzido" do sistema, o botão de efeitos do Percy Jackson e o mudo do site. Os sons são sintetizados (sem arquivos de áudio).

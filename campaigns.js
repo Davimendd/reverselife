@@ -11,7 +11,8 @@ import { icon, stateIcon } from "./icons.js";
 import { initBestiary, renderBestiary } from "./bestiary.js";
 import { setPassivesActive, maxExtra } from "./rules.js";
 import { initHunger, hungerSections, hungerItemMeta, hungerItemActions, hungerControls, bindHungerCard, mountDistrictBlock, districtHeaderHtml, attrPassiveBadge, catalogPresets } from "./hunger.js";
-import { initArena, setArenaData, resetArenaData, renderArena } from "./hunger-arena.js";
+import { initArena, setArenaData, resetArenaData, renderArena, refreshMap } from "./hunger-arena.js";
+import { renderCounter, fallenTributeFx } from "./hunger-fx.js";
 import * as HE from "./hunger-engine.js";
 import { DISTRICT_BY_N } from "./hunger-data.js";
 import { initScene, renderScene } from "./scene.js";
@@ -1003,6 +1004,7 @@ function checkForNotifications(newList){
 
       // morte — vale pra qualquer um que tenha a campanha aberta, não só o dono
       if (prev.damage < curr.max && curr.damage >= curr.max) {
+        if (isHunger(currentCampaign)) fallenTributeFx(character);     // canhão + tela escura do tributo caído
         sendNotification(`☠️ ${character.fullName} morreu`, "O personagem chegou ao limite de dano.");
       } else if (mine && curr.damage !== prev.damage) {
         if (curr.damage > prev.damage) {
@@ -1105,6 +1107,7 @@ function renderCampaignCard(campaign){
           renderCampaignHeader(updated);
           renderCureConfig(updated);
           renderNarratorsPanel(updated);
+          renderCounter(lastCharacterList, isHunger(updated));
           renderRulesPanel(updated);
           renderScene(sceneHost, updated);
           refreshSanityTestBtn(updated);
@@ -1398,6 +1401,8 @@ function openCampaign(campaign){
       checkBleedingTicks();
       applyCharacterFilter();
       percyOnHits(lastHits);
+      renderCounter(list, isHunger(currentCampaign));
+      refreshMap();
     });
   };
   tryListen();
@@ -1459,6 +1464,7 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (bestiaryHost) { bestiaryHost.hidden = true; bestiaryHost.innerHTML = ""; }
   renderScene(sceneHost, null);
   currentCampaign = null;
+  renderCounter([], false);
   renderNarratorsPanel(null);
   renderArena();
   previousCharacterStates = new Map();

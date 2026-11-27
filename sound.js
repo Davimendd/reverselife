@@ -222,3 +222,56 @@ export function playCritSfx(){
   tone(c, now, { f: 120, to: 55, dur: 0.4, g: 0.3 });
   noise(c, now + 0.28, 0.5, { type: "highpass", f: 6000, g: 0.08, shape: "swell" });
 }
+
+// ============================================================
+// Jogos Vorazes: canhão, paraquedas e ambiente dos eventos (tudo sintetizado, volume baixo)
+// ============================================================
+
+// canhão que anuncia a morte de um tributo: estrondo grave, eco e um sino distante
+export function playCannon(){
+  if (muted) return;
+  const c = ctx();
+  const now = c.currentTime;
+  [0, 0.95].forEach((d, i) => {
+    const g = i ? 0.5 : 1;
+    tone(c, now + d, { f: 150, to: 28, dur: 1.1, g: 0.5 * g });
+    tone(c, now + d, { type: "triangle", f: 62, to: 30, dur: 1.4, g: 0.35 * g });
+    noise(c, now + d, 0.9, { type: "lowpass", f: 1800, to: 80, g: 0.45 * g });
+  });
+  tone(c, now + 1.9, { f: 392, dur: 1.6, g: 0.05, vib: 2 });
+}
+
+// paraquedas de patrocinador: assobio suave descendo e dois sininhos prateados
+export function playParachute(){
+  if (muted) return;
+  const c = ctx();
+  const now = c.currentTime;
+  noise(c, now, 2.2, { type: "bandpass", f: 2600, to: 500, g: 0.06, shape: "swell", q: 0.8 });
+  [1318, 1760, 2093].forEach((f, i) => tone(c, now + 1.3, { f, dur: 1.1, g: 0.07, delay: i * 0.13 }));
+}
+
+// ambiente curto de cada evento da arena (3 a 4 s, bem baixinho)
+export function playEventAmbient(id){
+  if (muted) return;
+  const c = ctx();
+  const now = c.currentTime;
+  switch (id) {
+    case "chuva": noise(c, now, 3.5, { type: "highpass", f: 3500, g: 0.05, shape: "swell" }); tone(c, now, { f: 90, dur: 2.5, g: 0.05 }); break;
+    case "nevasca": noise(c, now, 3.5, { type: "bandpass", f: 700, to: 1400, g: 0.07, shape: "swell", q: 0.7 }); break;
+    case "cinzas": noise(c, now, 3.5, { type: "lowpass", f: 900, to: 300, g: 0.08, shape: "swell" }); break;
+    case "terremoto":
+      tone(c, now, { type: "sawtooth", f: 46, to: 32, dur: 2.6, g: 0.12, vib: 6 });
+      noise(c, now, 2.6, { type: "lowpass", f: 300, to: 60, g: 0.25, shape: "swell" }); break;
+    case "tsunami": noise(c, now, 3.8, { type: "lowpass", f: 400, to: 1800, g: 0.14, shape: "swell" }); tone(c, now + 1.6, { f: 60, to: 34, dur: 1.8, g: 0.15 }); break;
+    case "canarios": for (let i = 0; i < 7; i++) tone(c, now, { f: 2300 + Math.random() * 900, to: 3300, dur: 0.12, g: 0.04, delay: i * 0.22 }); break;
+    case "predadores": tone(c, now, { type: "sawtooth", f: 78, to: 52, dur: 2.2, g: 0.09, vib: 14 }); break;
+    case "flora": noise(c, now, 3, { type: "bandpass", f: 1200, g: 0.04, shape: "swell", q: 3 }); tone(c, now, { f: 330, to: 294, dur: 2.4, g: 0.04, vib: 3 }); break;
+    case "ceia": [880, 1175, 1568].forEach((f, i) => tone(c, now, { f, dur: 1.2, g: 0.06, delay: i * 0.18 })); break;
+    case "bomba": for (let i = 0; i < 4; i++) tone(c, now, { type: "triangle", f: i % 2 ? 560 : 820, dur: 0.38, g: 0.1, delay: i * 0.4 }); break;
+    case "bomba_impacto":
+      tone(c, now, { f: 90, to: 22, dur: 1.6, g: 0.6 });
+      noise(c, now, 1.8, { type: "lowpass", f: 2600, to: 60, g: 0.6 });
+      noise(c, now + 0.1, 0.5, { type: "highpass", f: 4000, g: 0.25 }); break;
+    default: break;
+  }
+}

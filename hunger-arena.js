@@ -11,11 +11,18 @@ import { ARENA_EVENTS, EVENT_BY_ID, PLANTS, ZONES, buildBanquet, poisonResult, D
 import * as HE from "./hunger-engine.js";
 import { getCtx, toast, openModal, closeModal, modalBar, errMsg, hungerItemMeta } from "./hunger.js";
 import { esc, fmtMs } from "./percy.js";
+import { arenaMapHtml, parachuteFx, eventFx, bombImpactFx } from "./hunger-fx.js";
 
 let ctx = null;
 let data = { stock: null, drops: [], loaded: false };
 let autoTimer = null;
 let seeding = false;
+// efeitos de tela: o primeiro retrato da campanha só "marca" o que já existia (sem animar)
+let primed = { events: false, drops: false };
+const seenEvents = new Set();
+const seenDrops = new Set();
+const glow = new Map();        // id do presente -> quando caiu (brilho dourado por alguns segundos)
+const GLOW_MS = 7000;
 
 export function initArena(){
   ctx = getCtx();
@@ -28,10 +35,49 @@ const hostEl = () => document.getElementById("arenaPanel");
 
 export function setArenaData(patch){
   data = { ...data, ...patch };
+  if (patch.drops) detectNewDrops(patch.drops);
   renderArena();
   maybeSeed();
 }
-export function resetArenaData(){ data = { stock: null, drops: [], loaded: false }; }
+export function resetArenaData(){
+  data = { stock: null, drops: [], loaded: false };
+  primed = { events: false, drops: false };
+  seenEvents.clear(); seenDrops.clear(); glow.clear();
+}
+
+// paraquedas novo (ou revelado) -> animação na tela de todo mundo
+function detectNewDrops(list){
+  if (!active()) return;
+  const vis = list.filter((d) => d.kind !== "dish" && !d.hidden && d.qty > 0);
+  if (!primed.drops) { vis.forEach((d) => seenDrops.add(d.id)); primed.drops = true; return; }
+  vis.filter((d) => !seenDrops.has(d.id)).forEach((d) => {
+    seenDrops.add(d.id);
+    glow.set(d.id, Date.now());
+    parachuteFx(d.name, `${d.locName || "?"}${d.region && d.region !== "cornucopia" ? ` · ${regionLabel(d.region)}` : ""}`);
+    setTimeout(() => renderArena(), GLOW_MS + 100);
+  });
+}
+// evento novo -> clima ao fundo (e o impacto da bomba, 1 minuto depois do alerta)
+function detectNewEvents(){
+  const list = eventsOf();
+  if (!primed.events) { list.forEach((e) => seenEvents.add(e.id)); primed.events = true; return; }
+  list.filter((e) => !seenEvents.has(e.id)).forEach((e) => {
+    seenEvents.add(e.id);
+    if (!isLive(e)) return;
+    eventFx(e.type);
+    if (e.type === "bomba") { const wait = e.startedAt + 60000 - Date.now(); if (wait > 0) setTimeout(bombImpactFx, wait); }
+  });
+}
+
+// o mapa acompanha a posição dos tributos sem redesenhar o painel todo
+export function refreshMap(){
+  const w = document.querySelector(".hg-map-wrap");
+  if (w && active()) w.innerHTML = mapHtml();
+}
+function mapHtml(){
+  const live = eventsOf().filter(isLive);
+  return arenaMapHtml({ locs: locsOf(), drops: data.drops.filter((d) => d.kind !== "dish" && !d.hidden && d.qty > 0), events: live, liveEventIds: live.map((e) => e.id), chars: ctx.characters() });
+}
 
 // primeira vez com o sistema ligado: monta o estoque inicial da Cornucópia
 async function maybeSeed(){
@@ -57,6 +103,7 @@ export function renderArena(){
   const narr = ctx.isNarrator();
   const c = camp();
   host.hidden = false;
+  detectNewEvents();
   const now = Date.now();
   const live = eventsOf().filter(isLive);
   const sponsors = data.drops.filter((d) => d.source !== "ceia" && !d.hidden && d.qty > 0);
@@ -68,7 +115,13 @@ export function renderArena(){
     <div class="ht-panel-body hg-body">
       ${live.map((e) => eventBanner(e, narr, now)).join("")}
 
-      <section class="hg-block hg-sponsor">
+      <details class="hg-block hg-map" open>
+        <summary><h3>🗺️ Mapa da arena <small>Cornucópia no centro · quatro regiões</small></h3></summary>
+        <div class="hg-map-wrap">${mapHtml()}</div>
+        <p class="hg-hint hg-map-legend">🪂 presente caído · 👥 tributos na região (pontos coloridos = distrito) · a região <b>pisca</b> durante um evento · marque sua posição na ficha.</p>
+      </details>
+
+      <section class="hg-block hg-sponsor ${[...glow.values()].some((t) => Date.now() - t < GLOW_MS) ? "hg-glow" : ""}">
         <h3>🪂 Presentes de Patrocinadores <small>${sponsors.length ? `${sponsors.length} no ar` : "nada caiu ainda"}</small></h3>
         <p class="hg-hint">Os patrocinadores enviam suprimentos por paraquedas. Cada presente fica no local onde caiu: reivindique-o como qualquer item da Cornucópia.</p>
         <div class="hg-loot">${sponsors.length ? sponsors.map((d) => lootRow(d, narr)).join("") : `<p class="empty-state">nenhum paraquedas prateado caiu. Fique de olho no céu.</p>`}</div>
@@ -126,7 +179,7 @@ function eventBanner(rec, narr, now){
 
 function lootRow(d, narr){
   const info = HE.itemInfo(d.key);
-  return `<div class="hg-loot-row">
+  return `<div class="hg-loot-row ${glow.has(d.id) && Date.now() - glow.get(d.id) < GLOW_MS ? "hg-glow" : ""}">
     <span class="hg-loot-ico">${info.ico}</span>
     <div class="hg-loot-info"><b>${esc(d.name)}</b><small>📍 ${esc(d.locName || "?")} · ${esc(regionLabel(d.region))} · x${d.qty}</small><small class="hg-desc">${esc(info.desc)}</small></div>
     <button class="btn-mini pz-use" data-hg-claim="drops|${d.id}">reivindicar</button>

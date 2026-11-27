@@ -7,11 +7,11 @@
 // rolagens em tempo real ou dados das campanhas.
 //
 // Ao publicar uma nova versão do site, aumente o número em
-// CACHE_NAME (ex: "reverse-life-v18") pra forçar os navegadores
+// CACHE_NAME (ex: "reverse-life-v19") pra forçar os navegadores
 // a buscarem os arquivos atualizados em vez de usar o cache antigo.
 // ============================================================
 
-const CACHE_NAME = "reverse-life-v18";
+const CACHE_NAME = "reverse-life-v19";
 
 const APP_SHELL = [
   "./",
@@ -38,6 +38,7 @@ const APP_SHELL = [
   "./hunger-events.js",
   "./hunger.js",
   "./hunger-arena.js",
+  "./hunger-fx.js",
   "./dice-data.js",
   "./pwa.js",
   "./manifest.json",
