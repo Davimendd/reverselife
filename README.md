@@ -187,6 +187,11 @@ Nenhuma regra nova do Firestore é necessária: tudo reaproveita os documentos d
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // narrador = dono da campanha OU co-narrador (uid em narratorUids)
+    function isNarrator(campaignId) {
+      let c = get(/databases/$(database)/documents/campaigns/$(campaignId)).data;
+      return request.auth != null && (request.auth.uid == c.creatorUid || request.auth.uid in c.get('narratorUids', []));
+    }
     match /rolls/{roll} {
       allow read: if true;
       allow create: if request.auth != null;
@@ -208,7 +213,15 @@ service cloud.firestore {
       allow create: if request.auth != null;
       allow update: if request.auth != null && (
         !('creatorUid' in resource.data) ||
-        request.auth.uid == resource.data.creatorUid
+        request.auth.uid == resource.data.creatorUid ||
+        // co-narrador: edita tudo, menos a lista de narradores e o dono
+        (request.auth.uid in resource.data.get('narratorUids', [])
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['narratorUids', 'coNarrators', 'creatorUid', 'creator'])) ||
+        // co-narrador pode sair sozinho da lista
+        (request.auth.uid in resource.data.get('narratorUids', [])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['narratorUids', 'coNarrators'])
+          && !(request.auth.uid in request.resource.data.narratorUids)
+          && request.resource.data.narratorUids.size() == resource.data.narratorUids.size() - 1)
       );
       allow delete: if false;
 
@@ -218,7 +231,7 @@ service cloud.firestore {
         allow update: if request.auth != null && (
           !('creatorUid' in resource.data) ||
           request.auth.uid == resource.data.creatorUid ||
-          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid ||
+          isNarrator(campaignId) ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items'])
           // Jogos Vorazes: ataques e efeitos aplicados na hora, sem confirmação do alvo
           || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['items', 'damage', 'fx', 'bleeding', 'sanity', 'infection', 'hunger', 'thirst'])
@@ -236,9 +249,9 @@ service cloud.firestore {
       match /monsters/{monsterId} {
         allow read: if true;
         allow create, delete: if request.auth != null
-          && request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid;
+          && isNarrator(campaignId);
         allow update: if request.auth != null && (
-          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+          isNarrator(campaignId)
           // Jogos Vorazes: qualquer jogador pode ferir uma Ameaça (só dano e efeitos)
           || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['damage', 'fx'])
         );
@@ -248,9 +261,9 @@ service cloud.firestore {
       match /arena/{docId} {
         allow read: if true;
         allow create, delete: if request.auth != null
-          && request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid;
+          && isNarrator(campaignId);
         allow update: if request.auth != null && (
-          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+          isNarrator(campaignId)
           || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock'])
         );
       }
@@ -259,9 +272,9 @@ service cloud.firestore {
       match /drops/{dropId} {
         allow read: if true;
         allow create, delete: if request.auth != null
-          && request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid;
+          && isNarrator(campaignId);
         allow update: if request.auth != null && (
-          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid
+          isNarrator(campaignId)
           || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['qty'])
         );
       }
@@ -271,7 +284,7 @@ service cloud.firestore {
         allow read: if true;
         allow create: if request.auth != null;
         allow update: if request.auth != null && (
-          request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)).data.creatorUid ||
+          isNarrator(campaignId) ||
           request.auth.uid == get(/databases/$(database)/documents/campaigns/$(campaignId)/characters/$(resource.data.targetId)).data.creatorUid
         ) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['applied', 'appliedBy', 'appliedAt']);
         allow delete: if false;
@@ -284,6 +297,8 @@ service cloud.firestore {
 A coleção `/monsters` guarda o **bestiário** (só o narrador escreve). **Atenção:** a leitura é pública como no resto do app, então monstros "ocultos" ficam escondidos na interface, mas não de quem abrir o console do navegador. A coleção `/hits` é a **fila de ataques e efeitos entre fichas** do sistema Percy Jackson. Quando um jogador ataca ou usa um poder em uma ficha que não é dele, o site não consegue alterar o dano dessa ficha (só o narrador e o dono podem), então grava um "hit" ali. Quem tem permissão (o narrador ou o dono da ficha-alvo), assim que abrir a campanha, aplica o hit automaticamente e o marca como aplicado — tudo dentro de uma transação, então nada é aplicado duas vezes. **Sem essa regra publicada, ataques entre fichas de donos diferentes não funcionam** (ataques do próprio narrador e em fichas próprias funcionam normalmente).
 
 **Jogos Vorazes — regras novas (publique-as para o sistema funcionar online).** As coleções `/arena` (estoque da Cornucópia) e `/drops` (presentes e banquete) guardam o que os jogadores reivindicam: a transação do site baixa o estoque e põe o item na ficha de uma vez só, então vale quem reivindicar primeiro e nunca passa do estoque. Como os ataques desse sistema são aplicados **na hora, sem confirmação**, as fichas passam a aceitar de qualquer pessoa logada alterações em `damage`, `fx`, `bleeding`, `sanity`, `infection`, `hunger`, `thirst` e `items` (e as Ameaças aceitam `damage` e `fx`). O custo é que quem abrir o console do navegador também consegue mexer nesses campos; para mesas de amigos isso costuma ser aceitável. Se o site não conseguir gravar (regras antigas), ele cai sozinho na fila de hits do Percy Jackson. O veneno de cada prato da Última Ceia fica escondido só na interface (como os monstros ocultos).
+
+**Co-narradores.** O dono da campanha pode dar o cargo de narrador a outros usuários (pelo @nome, no painel "narradores" da campanha). Eles ficam em `narratorUids` (usado pelas regras) e `coNarrators` (nome para exibir) e passam a ter as mesmas funções do dono: fichas, itens, regras, cena, arena, eventos, Ameaças e hits. Só o dono nomeia ou remove co-narradores, e um co-narrador pode sair sozinho. **Publique as regras novas acima** (a função `isNarrator` substitui as checagens de `creatorUid` da campanha).
 
 A condição `!('creatorUid' in resource.data)` existe para não travar campanhas/fichas criadas **antes** de o site ter login (elas não têm esse campo salvo) — nesses casos, qualquer pessoa logada ainda consegue editar. Fichas e campanhas criadas depois do login já vêm com `creatorUid` preenchido e passam a valer só para quem criou.
 

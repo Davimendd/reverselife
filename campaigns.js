@@ -333,6 +333,14 @@ async function initFirebaseBackend(){
   campaignsAPI.patchCampaign = async (campaignId, patch) => {
     await updateDoc(doc(db, "campaigns", campaignId), patch);
   };
+  // procura um usuário pelo @nome (coleção usernames, leitura pública)
+  campaignsAPI.findUserByHandle = async (handle) => {
+    const { getDoc } = await getFirestoreFns();
+    const snap = await getDoc(doc(db, "usernames", handle.trim().toLowerCase()));
+    if (!snap.exists()) return null;
+    const d = snap.data();
+    return { uid: d.uid, handle: d.display || handle.trim() };
+  };
 
   // ---- sistema Percy Jackson: leitura-e-escrita atômica da ficha + fila de ataques (hits) ----
   const collOf = (kind) => (kind === "monster" ? "monsters" : "characters");
@@ -694,6 +702,12 @@ function initLocalBackend(){
     return true;
   };
 
+  campaignsAPI.findUserByHandle = async (handle) => {
+    let accs = [];
+    try { accs = JSON.parse(localStorage.getItem("rl_local_accounts") || "[]"); } catch { accs = []; }
+    const a = accs.find((x) => (x.handle || "").toLowerCase() === handle.trim().toLowerCase());
+    return a ? { uid: a.uid, handle: a.handle } : null;
+  };
   campaignsAPI.patchCampaign = async (campaignId, patch) => {
     const list = readCampaigns();
     const idx = list.findIndex((c) => c.id === campaignId);
@@ -1090,6 +1104,7 @@ function renderCampaignCard(campaign){
           setPassivesActive(HE.isHungerCampaign(updated));
           renderCampaignHeader(updated);
           renderCureConfig(updated);
+          renderNarratorsPanel(updated);
           renderRulesPanel(updated);
           renderScene(sceneHost, updated);
           refreshSanityTestBtn(updated);
@@ -1121,7 +1136,8 @@ function renderCampaignHeader(campaign){
 // ------------------------------------------------------------
 // permissão compartilhada: "sou o narrador desta campanha?"
 // ------------------------------------------------------------
-function isCurrentUserCampaignCreator(campaign){
+// dono (quem criou a campanha): só ele nomeia e remove co-narradores
+function isCampaignOwner(campaign){
   const uid = getCurrentUid();
   const handle = getCurrentHandle();
   return !!(
@@ -1129,7 +1145,12 @@ function isCurrentUserCampaignCreator(campaign){
     (!campaign.creatorUid && handle && campaign.creator && handle.toLowerCase() === campaign.creator.toLowerCase())
   );
 }
-
+// narrador = o dono OU um co-narrador nomeado por ele (mesmas funções, em toda a campanha)
+function isCurrentUserCampaignCreator(campaign){
+  const uid = getCurrentUid();
+  if (uid && Array.isArray(campaign.narratorUids) && campaign.narratorUids.includes(uid)) return true;
+  return isCampaignOwner(campaign);
+}
 // ------------------------------------------------------------
 // painel de fome e sede (nível campanha) — liga/desliga e ações em massa
 // ------------------------------------------------------------
@@ -1191,6 +1212,68 @@ async function bulkAdjustAll(statKey, delta, label, icon){
 // ------------------------------------------------------------
 // configuração da cura padrão dos itens de categoria "cura"
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+// narradores da campanha: o dono nomeia co-narradores com as mesmas funções
+// ------------------------------------------------------------
+const narratorsEl = document.getElementById("campNarrators");
+function renderNarratorsPanel(campaign){
+  if (!narratorsEl) return;
+  if (!campaign) { narratorsEl.hidden = true; narratorsEl.innerHTML = ""; return; }
+  const owner = isCampaignOwner(campaign);
+  const me = getCurrentUid();
+  const co = campaign.coNarrators || [];
+  const imCo = !owner && co.some((n) => n.uid === me);
+  narratorsEl.hidden = false;
+  narratorsEl.innerHTML = `
+    <span class="narr-label">🎙️ narradores:</span>
+    <span class="narr-chip owner" title="dono da campanha">${escapeHtml(campaign.creator || "?")} <small>dono</small></span>
+    ${co.map((n) => `<span class="narr-chip">${escapeHtml(n.handle)}${owner ? ` <button class="narr-x" data-narr-del="${escapeHtml(n.uid)}" title="remover o cargo de narrador">✕</button>` : ""}</span>`).join("")}
+    ${owner ? `<form class="narr-add" id="narrAddForm" autocomplete="off">
+        <input type="text" id="narrAddInput" class="modal-input" maxlength="24" placeholder="@nome do usuário">
+        <button class="btn-mini pz-use" type="submit">+ dar cargo de narrador</button>
+      </form>` : ""}
+    ${imCo ? `<button class="btn-mini" id="narrLeave">deixar de ser narrador</button>` : ""}
+    <span class="narr-hint">${owner ? "Co-narradores têm as mesmas funções que você: fichas, itens, regras, arena, eventos e Ameaças. Só você nomeia ou remove." : "Narradores têm acesso a todas as funções de administração da campanha."}</span>
+    <span class="narr-err" id="narrErr"></span>`;
+  const err = (m) => { const e = document.getElementById("narrErr"); if (e) e.textContent = m || ""; };
+  const form = document.getElementById("narrAddForm");
+  if (form) form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const raw = document.getElementById("narrAddInput").value.trim().replace(/^@/, "");
+    if (raw.length < 2) { err("digite o @nome do usuário."); return; }
+    err("procurando…");
+    try {
+      const u = await campaignsAPI.findUserByHandle(raw);
+      if (!u) { err(`usuário "${raw}" não encontrado (ele precisa ter conta no site).`); return; }
+      if (u.uid === campaign.creatorUid) { err("essa pessoa já é a dona da campanha."); return; }
+      if (co.some((n) => n.uid === u.uid)) { err(`${u.handle} já é narrador.`); return; }
+      await campaignsAPI.patchCampaign(campaign.id, {
+        narratorUids: [...(campaign.narratorUids || []), u.uid],
+        coNarrators: [...co, { uid: u.uid, handle: u.handle }],
+      });
+      logEvent("🎙️", `<b>${escapeHtml(getCurrentHandle())}</b> deu o cargo de <b>narrador</b> a <b>${escapeHtml(u.handle)}</b>.`);
+      err("");
+    } catch (e) { console.error("Falha ao nomear narrador:", e); err(describeError(e, "não foi possível nomear o narrador.")); }
+  });
+  narratorsEl.querySelectorAll("[data-narr-del]").forEach((b) => b.addEventListener("click", async () => {
+    const uid = b.dataset.narrDel;
+    const who = co.find((n) => n.uid === uid);
+    if (!who || !confirm(`Remover o cargo de narrador de ${who.handle}?`)) return;
+    try {
+      await campaignsAPI.patchCampaign(campaign.id, { narratorUids: (campaign.narratorUids || []).filter((u) => u !== uid), coNarrators: co.filter((n) => n.uid !== uid) });
+      logEvent("🎙️", `<b>${escapeHtml(getCurrentHandle())}</b> removeu o cargo de narrador de <b>${escapeHtml(who.handle)}</b>.`);
+    } catch (e) { err(describeError(e, "não foi possível remover.")); }
+  }));
+  const leave = document.getElementById("narrLeave");
+  if (leave) leave.addEventListener("click", async () => {
+    if (!confirm("Deixar de ser narrador desta campanha? Só o dono poderá nomear você de novo.")) return;
+    try {
+      await campaignsAPI.patchCampaign(campaign.id, { narratorUids: (campaign.narratorUids || []).filter((u) => u !== me), coNarrators: co.filter((n) => n.uid !== me) });
+      logEvent("🎙️", `<b>${escapeHtml(getCurrentHandle())}</b> deixou o cargo de narrador.`);
+    } catch (e) { err(describeError(e, "não foi possível sair.")); }
+  });
+}
+
 function renderCureConfig(campaign){
   const isNarrator = isCurrentUserCampaignCreator(campaign);
   if (!isNarrator) {
@@ -1284,6 +1367,7 @@ function openCampaign(campaign){
   resetArenaData();
   renderCampaignHeader(campaign);
   renderCureConfig(campaign);
+  renderNarratorsPanel(campaign);
   attrRollResults.clear();
   attrMenu = null;
   renderRulesPanel(campaign);
@@ -1375,6 +1459,7 @@ backToCampaignsBtn.addEventListener("click", () => {
   if (bestiaryHost) { bestiaryHost.hidden = true; bestiaryHost.innerHTML = ""; }
   renderScene(sceneHost, null);
   currentCampaign = null;
+  renderNarratorsPanel(null);
   renderArena();
   previousCharacterStates = new Map();
   cureConfigEl.hidden = true;
