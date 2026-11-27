@@ -17,6 +17,8 @@ import { playCannon, playParachute, playEventAmbient } from "./sound.js";
 const reduced = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const rnd = (a, b) => a + Math.random() * (b - a);
+// som e animação nunca podem derrubar a ficha: qualquer falha (sem áudio, etc.) é ignorada
+const safe = (fn) => { try { fn(); } catch (e) { console.warn("efeito ignorado:", e && e.message); } };
 
 function layer(cls, html, ms, style = ""){
   const el = document.createElement("div");
@@ -34,7 +36,7 @@ function layer(cls, html, ms, style = ""){
 // paraquedas de patrocinador
 // ============================================================
 export function parachuteFx(name, place){
-  playParachute();
+  safe(playParachute);
   if (!fxEnabled() || reduced()) return;
   const left = rnd(18, 78);
   layer("hgfx-chute", `
@@ -54,7 +56,7 @@ export function parachuteFx(name, place){
 // tributo caído: canhão + tela escura com nome, foto e distrito
 // ============================================================
 export function fallenTributeFx(character){
-  playCannon();
+  safe(playCannon);
   const d = character.district ? DISTRICT_BY_N[character.district] : null;
   const el = document.createElement("div");
   el.className = "hgfx-fallen";
@@ -99,7 +101,7 @@ const EVENT_FX = {
 export function eventFx(typeId){
   const ev = EVENT_BY_ID[typeId];
   if (!ev) return;
-  playEventAmbient(typeId);
+  safe(() => playEventAmbient(typeId));
   if (!fxEnabled()) return;
   const make = EVENT_FX[typeId];
   if (!make) return;
@@ -111,7 +113,7 @@ export function eventFx(typeId){
 
 // impacto da bomba: clarão branco, rachaduras e tremor (1 minuto depois do alerta)
 export function bombImpactFx(){
-  playEventAmbient("bomba_impacto");
+  safe(() => playEventAmbient("bomba_impacto"));
   if (!fxEnabled()) return;
   layer("hgfx hgfx-impact", `
     <i class="flash"></i>

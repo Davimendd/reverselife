@@ -3568,3 +3568,116 @@ body.hgfx-shake{ animation:hgQuake .22s linear 6; }
   .hgfx .edge, .hg-map-svg .map-sec.ev path, .hg-alert{ animation:none; }
   .hgfx-chute{ display:none; }
 }
+
+/* ============================================================
+   JOGOS VORAZES — identidade do distrito na ficha, linha recolhida e painel de status
+   ============================================================ */
+.character-card.hg{ border-left:4px solid var(--dist); }
+.character-card.hg .character-card-details{ position:relative; overflow:hidden; }
+/* selo do distrito ao fundo da ficha aberta */
+.character-card.hg.has-dist .character-card-details::after{
+  content:var(--seal); position:absolute; right:-14px; bottom:-26px; font-size:170px; line-height:1;
+  opacity:.06; pointer-events:none; filter:grayscale(.2); transform:rotate(-10deg); z-index:0;
+}
+.character-card.hg .character-card-details > *{ position:relative; z-index:1; }
+.character-card.hg[data-bodystate="mancando"]{ box-shadow:inset 0 0 0 1px rgba(224,162,60,.32), 0 0 14px rgba(224,162,60,.08); }
+.character-card.hg[data-bodystate="chao"]{ box-shadow:inset 0 0 0 1px rgba(216,58,58,.45), 0 0 18px rgba(216,58,58,.14); }
+.character-card.hg[data-bodystate="morto"]{ box-shadow:inset 0 0 0 1px #333; }
+
+/* selo no canto da foto */
+.character-thumb-wrap{ position:relative; flex:none; display:flex; }
+.hg-seal{
+  position:absolute; right:-7px; bottom:-7px; display:inline-flex; align-items:center; gap:2px;
+  padding:1px 6px 1px 5px; border-radius:999px; font-size:11px; line-height:1.3;
+  background:#050505; border:1.5px solid var(--dist); color:var(--dist); box-shadow:0 0 8px color-mix(in srgb, var(--dist) 45%, transparent);
+}
+.hg-seal b{ font-family:var(--mono); font-size:10px; color:var(--off); }
+
+/* linha recolhida: o essencial sem abrir a ficha */
+.hg-quick{ display:flex; flex-wrap:wrap; gap:4px; margin:6px 0 4px; }
+.hg-q{
+  display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:4px;
+  font-family:var(--mono); font-size:10.5px; line-height:1.35; white-space:nowrap;
+  color:var(--off); background:#121212; border:1px solid var(--line);
+}
+.hg-q em{ font-style:normal; color:var(--mute); }
+.hg-q.dist{ color:var(--dist); border-color:color-mix(in srgb, var(--dist) 55%, var(--line)); background:color-mix(in srgb, var(--dist) 10%, #101010); font-weight:700; }
+.hg-q.hp{ color:var(--c, var(--off)); border-color:color-mix(in srgb, var(--c, #555) 50%, var(--line)); font-weight:700; }
+.hg-q.san.bad{ color:#d6a8ff; border-color:#4a2a66; }
+.hg-q.need.low{ color:#f0c36a; border-color:#5a4a1c; }
+.hg-q.need.crit{ color:#ff8a8a; border-color:#6a2222; animation:hgBlink 1.4s ease-in-out infinite; }
+.hg-q.wpn{ color:#ffd9a0; border-color:#4a3418; background:#17110a; }
+.hg-q.wpn.mute{ color:var(--mute); background:#121212; border-color:var(--line); }
+.hg-q.al{ font-weight:700; }
+.hg-q.al.bleed{ color:#ff9a9a; border-color:#5a2020; background:#1a0c0c; }
+.hg-q.al.bad{ color:#ff8a8a; border-color:#6a2222; background:#1c0c0c; }
+.hg-q.al.warn{ color:#f0c36a; border-color:#5a4a1c; background:#1a1608; }
+.hg-q.al.ev{ color:#9fd6ff; border-color:#1f4a66; background:#0b1620; }
+
+/* faixa do distrito + passiva (topo da ficha aberta) */
+.hg-banner{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:10px 12px; border-radius:6px;
+  border:1px solid color-mix(in srgb, var(--dist) 50%, var(--line));
+  background:linear-gradient(100deg, color-mix(in srgb, var(--dist) 22%, #0c0c0c), #0c0c0c 75%);
+}
+.hg-banner-seal{
+  width:46px; height:46px; flex:none; display:flex; align-items:center; justify-content:center; font-size:1.6rem;
+  border-radius:50%; border:2px solid var(--dist); background:#050505; box-shadow:0 0 14px color-mix(in srgb, var(--dist) 45%, transparent);
+}
+.hg-banner-info{ display:flex; flex-direction:column; min-width:96px; }
+.hg-banner-info small{ font-family:var(--mono); font-size:.6rem; letter-spacing:.24em; color:var(--dist); }
+.hg-banner-info b{ font-family:var(--disp); letter-spacing:.08em; text-transform:uppercase; color:var(--off); font-size:.9rem; line-height:1.2; }
+.hg-banner-pas{ flex:1; min-width:200px; display:flex; flex-direction:column; gap:1px; padding:6px 10px; border-left:3px solid var(--dist); background:rgba(0,0,0,.35); border-radius:0 4px 4px 0; }
+.hg-banner-pas small{ font-family:var(--mono); font-size:.58rem; letter-spacing:.2em; color:var(--dist); }
+.hg-banner-pas b{ color:#fff; font-family:var(--disp); letter-spacing:.06em; font-size:.88rem; }
+.hg-banner-pas span{ color:#bdb4b4; font-size:.74rem; line-height:1.4; }
+.hg-lore-sec{ padding:0 2px; }
+.hg-lore-sec summary{ color:var(--dist); }
+
+/* painel de status unificado */
+.hg-status-grid{ display:flex; gap:14px; align-items:stretch; }
+.hg-sil{ display:flex; flex-direction:column; align-items:center; gap:4px; flex:none; width:64px; }
+.hg-sil-svg{ width:56px; height:112px; filter:drop-shadow(0 0 8px rgba(0,0,0,.6)); }
+.hg-sil-state{ font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-align:center; text-transform:uppercase; color:var(--mute); line-height:1.2; }
+.hg-sil.state-normal .hg-sil-state{ color:var(--dist); }
+.hg-sil.state-mancando .hg-sil-state{ color:#e0a23c; }
+.hg-sil.state-chao .hg-sil-state{ color:#d83a3a; }
+.hg-bars{ flex:1; min-width:0; display:flex; flex-direction:column; gap:9px; justify-content:center; }
+.hg-stat{ display:grid; grid-template-columns:86px 1fr auto auto; align-items:center; gap:8px; }
+.hg-stat-l{ font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); white-space:nowrap; }
+.hg-stat-v{ font-family:var(--mono); font-size:13px; font-weight:700; color:var(--off); min-width:46px; text-align:right; font-variant-numeric:tabular-nums; }
+.hg-stat-v small{ font-weight:400; color:var(--mute); font-size:10px; }
+.hg-bar{ position:relative; height:10px; border-radius:3px; background:#101010; border:1px solid var(--line); overflow:hidden; }
+.hg-bar.big{ height:14px; }
+.hg-bar > i:first-child{ display:block; height:100%; transition:width .4s; }
+.hg-bar .san-fill{ background:linear-gradient(90deg, #5a3a8a, #b07cf0); }
+.hg-stat.san.insane .san-fill{ background:linear-gradient(90deg, #b07cf0, #ff7ad9); animation:hgBlink 1.2s infinite; }
+.hg-seg{ display:flex; gap:4px; }
+.hg-seg i{ flex:1; height:10px; border-radius:2px; background:#101010; border:1px solid var(--line); }
+.hg-seg.hunger i.on{ background:linear-gradient(180deg, #f0b44c, #b27a1c); border-color:#7a5416; }
+.hg-seg.thirst i.on{ background:linear-gradient(180deg, #6fd0ea, #2a86a6); border-color:#1f5f78; }
+.hg-stat.need.crit .hg-stat-l, .hg-stat.need.crit .hg-stat-v{ color:#ff8a8a; }
+.hg-stat.need.crit .hg-seg i{ border-color:#6a2222; }
+.hg-ctl{ display:inline-flex; gap:3px; }
+.hg-ctl .btn-mini{ padding:1px 7px; min-height:0; }
+.hg-stat:not(:has(.hg-ctl)){ grid-template-columns:86px 1fr auto; }
+.hg-status-note{ margin:2px 0 0; font-size:11.5px; line-height:1.4; color:#9a9090; }
+.hg-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); }
+.hg-tag{
+  display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap; padding:3px 9px; border-radius:4px; font-size:11.5px;
+  color:var(--off); background:#141414; border:1px solid var(--line);
+}
+.hg-tag.bleed{ color:#ff9a9a; border-color:#5a2020; background:#1a0c0c; }
+.hg-tag.bad{ color:#ff8a8a; border-color:#6a2222; background:#1c0c0c; }
+.hg-tag.warn{ color:#f0c36a; border-color:#5a4a1c; background:#1a1608; }
+.hg-tag .btn-mini{ padding:1px 7px; min-height:0; }
+.hg-tags .pz-fx-list{ display:contents; }
+.hg-tags .pz-fxchip{ border-radius:4px; padding:3px 9px; font-size:11.5px; }
+@media (max-width:520px){
+  .hg-status-grid{ flex-direction:column; align-items:center; }
+  .hg-bars{ width:100%; }
+  .hg-sil{ flex-direction:row; width:auto; }
+  .hg-sil-svg{ width:34px; height:68px; }
+  .hg-stat{ grid-template-columns:78px 1fr auto auto; gap:6px; }
+}
+.character-card.is-open.has-photo .character-thumb-wrap{ display:none; }

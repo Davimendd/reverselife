@@ -10,7 +10,7 @@ import { playDiceTick, playDeathAlert } from "./sound.js";
 import { icon, stateIcon } from "./icons.js";
 import { initBestiary, renderBestiary } from "./bestiary.js";
 import { setPassivesActive, maxExtra } from "./rules.js";
-import { initHunger, hungerSections, hungerItemMeta, hungerItemActions, hungerControls, bindHungerCard, mountDistrictBlock, districtHeaderHtml, attrPassiveBadge, catalogPresets } from "./hunger.js";
+import { hungerSeal, hungerBanner, hungerQuickRow, hungerStatusPanel, initHunger, hungerSections, hungerItemMeta, hungerItemActions, hungerControls, bindHungerCard, mountDistrictBlock, districtHeaderHtml, attrPassiveBadge, catalogPresets } from "./hunger.js";
 import { initArena, setArenaData, resetArenaData, renderArena, refreshMap } from "./hunger-arena.js";
 import { renderCounter, fallenTributeFx } from "./hunger-fx.js";
 import * as HE from "./hunger-engine.js";
@@ -1004,7 +1004,7 @@ function checkForNotifications(newList){
 
       // morte — vale pra qualquer um que tenha a campanha aberta, não só o dono
       if (prev.damage < curr.max && curr.damage >= curr.max) {
-        if (isHunger(currentCampaign)) fallenTributeFx(character);     // canhão + tela escura do tributo caído
+        if (isHunger(currentCampaign)) { try { fallenTributeFx(character); } catch (e) { console.warn("tela do tributo caído:", e); } }     // canhão + tela escura do tributo caído
         sendNotification(`☠️ ${character.fullName} morreu`, "O personagem chegou ao limite de dano.");
       } else if (mine && curr.damage !== prev.damage) {
         if (curr.damage > prev.damage) {
@@ -2039,7 +2039,12 @@ function renderCharacterCard(character){
 
   const card = document.createElement("div");
   card.className = "character-card" + (dead ? " is-dead" : "") + (insane && !dead ? " is-insane" : "") + (percyOn ? " percy" : "") + (hgOn ? " hg" : "");
-  if (hgOn && character.district && DISTRICT_BY_N[character.district]) card.style.setProperty("--dist", DISTRICT_BY_N[character.district].color);
+  if (hgOn && character.district && DISTRICT_BY_N[character.district]) {
+    card.style.setProperty("--dist", DISTRICT_BY_N[character.district].color);
+    card.style.setProperty("--seal", `"${DISTRICT_BY_N[character.district].ico}"`);
+    card.classList.add("has-dist");
+  }
+  if (hgOn) card.dataset.bodystate = dead ? "morto" : bodySt.key;
   const pGod = percyOn ? godOf(character) : null;
   if (pGod) card.style.setProperty("--god", pGod.color);
 
@@ -2061,10 +2066,12 @@ function renderCharacterCard(character){
 
   card.innerHTML = `
     <div class="character-card-head">
+      <div class="character-thumb-wrap">
       ${hasPhoto
         ? `<img class="character-thumb" src="${character.photoUrl}" alt="${escapeHtml(character.fullName)}">`
         : `<div class="character-thumb character-thumb-placeholder">${icon("user", 24)}</div>`
-      }
+      }${hgOn ? hungerSeal(character) : ""}
+      </div>
       <div class="character-head-info">
         <div class="character-name-row">
           <span class="character-name">${escapeHtml(character.fullName)}${nameSuffix}</span>
@@ -2078,6 +2085,7 @@ function renderCharacterCard(character){
           ${disadv && !dead ? `<span class="state-pill secondary state-disadv" title="testes com desvantagem até se curar">${icon("alert")} <span class="pill-text">desvantagem</span></span>` : ""}
           <span class="character-gender">${escapeHtml(character.gender || "não informado")}</span>
         </div>
+        ${hgOn ? hungerQuickRow({ character, damage, status, sanity, sanityOn, insane, hunger, thirst, bleedNow, disadv, dead }) : ""}
         <div class="damage-bar mini">
           <div class="damage-bar-fill" style="width:${fillPct}%; background:${status.color};"></div>
           ${damageTicks()}
@@ -2097,6 +2105,12 @@ function renderCharacterCard(character){
         </div>
       ` : ""}
 
+      ${hgOn ? hungerBanner(character) : ""}
+      ${hgOn ? hungerStatusPanel({
+        character, damage, maxDmg, status, fillPct, ticksHtml: damageTicks(stateTicks), bodySt, disadv, sanityOn, sanity, insane,
+        hunger, thirst, canEditHT: canEditHungerThirst, bleedNow, bleedProg, canEditDamage, fmtCountdown, bleedTicks: BLEED_TICKS,
+        stateIconHtml: stateIcon(bodySt.key), vigor, dead, htOn: hungerThirstOn, bleedingOn,
+      }) : `
       <section class="sheet-section vital">
         ${sectionTitle("vigor", "vital")}
         <div class="vital-row">
@@ -2111,6 +2125,7 @@ function renderCharacterCard(character){
           ${damageTicks(stateTicks)}
         </div>
       </section>
+      `}
 
       ${hasAttrs ? `
         <section class="sheet-section">
@@ -2128,7 +2143,7 @@ function renderCharacterCard(character){
         </section>
       ` : ""}
 
-      ${(bleedingOn || sanityOn) ? `
+      ${(!hgOn && (bleedingOn || sanityOn)) ? `
         <section class="sheet-section">
           ${sectionTitle("activity", "estado")}
           ${bleedingOn ? `
@@ -2154,7 +2169,7 @@ function renderCharacterCard(character){
         </section>
       ` : ""}
 
-      ${hungerThirstOn && !percyOn ? `
+      ${hungerThirstOn && !percyOn && !hgOn ? `
         <section class="sheet-section">
           ${sectionTitle("utensils", "necessidades")}
           <div class="ht-block">

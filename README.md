@@ -389,3 +389,11 @@ Seção própria no fim da página da campanha, só existe com o sistema Percy J
 - **Clima dos eventos**: efeito curto (cerca de 8 s) e translúcido, abaixo do cabeçalho e dos modais para não atrapalhar a leitura: chuva vermelha, flocos, cinzas, tremor, onda, canários, olhos dos predadores, esporos, brilho dourado e sirene. A Bomba Aérea ganha um clarão com rachaduras e tremor 1 minuto depois do alerta (só para quem estava com a campanha aberta no alerta).
 - **Tributos restantes**: contador no topo da campanha, com um ponto por tributo e a lista das últimas baixas.
 - Os efeitos só tocam para eventos e presentes **novos** (ao abrir a campanha nada é repetido). Respeitam "movimento reduzido" do sistema, o botão de efeitos do Percy Jackson e o mudo do site. Os sons são sintetizados (sem arquivos de áudio).
+
+### Jogos Vorazes — identidade do distrito na ficha
+
+- **Faixa e selo:** cada ficha ganha uma faixa lateral na cor do distrito, o selo (brasão + número) no canto da foto e o brasão como marca d'água ao fundo da ficha aberta. A passiva aparece em destaque logo no topo da ficha.
+- **Painel de status único:** dano, sanidade, fome e sede ficam alinhados em barras com ícones (fome e sede em 3 blocos, com os botões −/+ do narrador). Embaixo ficam as etiquetas de condição: sangrando (com contagem e botão parar), infectado (próxima perda), insano, desvantagem e os efeitos ativos (veneno, evento, fogo etc., com seus tempos).
+- **Silhueta do tributo:** a figura se enche de baixo para cima com a vida restante e muda de tom por estado (cor do distrito em Normal, âmbar em Mancando, vermelho em No Chão, cinza quando cai).
+- **Linha recolhida:** com a ficha fechada já aparecem distrito, dano, sanidade, fome, sede, a arma mais forte do inventário (com munição), o escudo equipado e alertas (🩸 sangrando, 🦠 infectado, ☠ envenenado, ⚡ em evento, ⚠ desvantagem...).
+- Os efeitos de som e tela agora são à prova de falha: se o navegador não tocar áudio, a ficha continua atualizando normalmente.

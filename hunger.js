@@ -121,21 +121,9 @@ export function hungerSections(character){
   const now = Date.now();
   const writable = canAct(character);
   const loc = character.region || "";
-  const inf = character.infection;
-  const infP = inf ? HE.infectionProgress(inf, now) : null;
-  const effects = fxChips(character, writable, now);
   return `
-    <section class="sheet-section hg-section hg-district-sec" ${d ? `style="--dist:${d.color}"` : ""}>
-      ${sectionTitle("shield", "tributo do distrito")}
-      ${d ? `
-        <div class="hg-tribute">
-          <span class="hg-dist-medal big">${d.ico}</span>
-          <div><b class="hg-tribute-name">${esc(d.name)}</b><small>${esc(d.sector)}</small></div>
-        </div>
-        <div class="hg-passive"><span>PASSIVA</span><b>${esc(d.passive.name)}</b><small>${esc(d.passive.text)}</small></div>
-        <details class="hg-lore"><summary>história do distrito</summary><p>${esc(d.lore)}</p></details>`
-      : `<p class="pz-empty">Este tributo ainda não tem distrito.${ctx.isMine(character) ? " Clique em ✎ no topo da ficha para escolher." : " O dono da ficha precisa escolher um."}</p>`}
-    </section>
+    ${d ? `<details class="hg-lore hg-lore-sec" style="--dist:${d.color}"><summary>📜 história do ${esc(d.name)}</summary><p>${esc(d.lore)}</p></details>`
+        : `<section class="sheet-section hg-section"><p class="pz-empty">Este tributo ainda não tem distrito.${ctx.isMine(character) ? " Clique em ✎ no topo da ficha para escolher." : " O dono da ficha precisa escolher um."}</p></section>`}
     <section class="sheet-section hg-section">
       ${sectionTitle("activity", "posição na arena")}
       <div class="hg-loc-row">
@@ -148,11 +136,6 @@ export function hungerSections(character){
       </div>
       <p class="hg-hint">Os eventos da arena atingem uma região inteira: o narrador vê quem está nela.</p>
     </section>
-    ${inf ? `<section class="sheet-section hg-section hg-infect">
-      ${sectionTitle("droplet", "infecção")}
-      <p>🦠 <b>Infectado.</b> Perde ${INFECTION_TICK_DMG}% de vida a cada 30 min (próxima em <b class="hg-next" data-hg-next="${now + infP.msToNext}">${fmtMs(infP.msToNext)}</b>) e não passa sozinho. <b>Só a Erva Vermelha cura.</b> Kit médico, atadura e antisséptico não curam infecção.</p>
-    </section>` : ""}
-    ${effects ? `<section class="sheet-section hg-section">${sectionTitle("activity", "efeitos ativos")}${effects}</section>` : ""}
     <section class="sheet-section hg-section">
       ${sectionTitle("dice", "combate")}
       <div class="pz-acts pz-punch"><div class="pz-act-row"><button class="pz-act" data-pact="punch|punch|punch" ${writable ? "" : "disabled"}>👊 Soco<small>1d4 + Força</small></button></div>
@@ -435,3 +418,129 @@ export function catalogPresets(){
           <optgroup label="🖤 Outros">${Object.values(EXTRA_BY_KEY).map(opt).join("")}</optgroup>`;
 }
 export { HE };
+
+
+// ============================================================
+// identidade visual da ficha: selo, faixa do distrito, linha recolhida e painel de status
+// ============================================================
+const FX_ALERT = [["veneno", "☠", "envenenado"], ["fogo", "🔥", "em chamas"], ["inconsciente", "😵", "inconsciente"], ["preso", "⛓", "preso"], ["asfixia", "😮‍💨", "asfixiado"], ["alucinacao", "👁", "alucinando"], ["afogando", "🌊", "afogando"]];
+
+export function hungerSeal(character){
+  const d = HE.districtOf(character);
+  return d ? `<span class="hg-seal" style="--dist:${d.color}" title="${esc(d.name)} — ${esc(d.sector)}">${d.ico}<b>${d.n}</b></span>` : "";
+}
+
+// faixa no topo da ficha aberta: distrito + passiva em destaque
+export function hungerBanner(character){
+  const d = HE.districtOf(character);
+  if (!d) return "";
+  return `<div class="hg-banner" style="--dist:${d.color}">
+    <span class="hg-banner-seal">${d.ico}</span>
+    <div class="hg-banner-info">
+      <small>DISTRITO ${d.n}</small>
+      <b>${esc(d.sector)}</b>
+    </div>
+    <div class="hg-banner-pas"><small>★ PASSIVA</small><b>${esc(d.passive.name)}</b><span>${esc(d.passive.text)}</span></div>
+  </div>`;
+}
+
+const diceAvg = (dmg) => { const m = /(\d*)d(\d+)/i.exec(String(dmg || "")); return m ? (parseInt(m[1] || "1", 10) * (parseInt(m[2], 10) + 1)) / 2 : 0; };
+const shortName = (n) => String(n).replace(/\s*\(.*?\)\s*/g, " ").trim();
+export function bestWeapon(items){
+  const w = (items || []).filter((i) => i.atk && (i.atk.ammo == null || i.atk.ammo > 0));
+  if (!w.length) return (items || []).find((i) => i.atk) || null;
+  return w.sort((a, b) => diceAvg(b.atk.dmg) - diceAvg(a.atk.dmg))[0];
+}
+
+// linha recolhida: tudo o que o jogador precisa sem abrir a ficha
+export function hungerQuickRow({ character, damage, status, sanity, sanityOn, insane, hunger, thirst, bleedNow, disadv, dead }){
+  const d = HE.districtOf(character);
+  const now = Date.now();
+  const live = liveFx(character, now);
+  const w = bestWeapon(character.items);
+  const shield = (character.items || []).find((i) => i.def && i.def.equipped && !i.def.broken);
+  const alerts = [];
+  if (bleedNow) alerts.push(["bleed", "🩸", "sangrando"]);
+  if (character.infection) alerts.push(["bad", "🦠", "infectado"]);
+  if (insane && !dead) alerts.push(["bad", "🌀", "insano"]);
+  FX_ALERT.forEach(([tag, ico, label]) => { if (live.some((f) => f.tag === tag || (tag === "veneno" && /^veneno/.test(f.tag || "")))) alerts.push(["bad", ico, label]); });
+  const evs = live.filter((f) => f.ev);
+  if (evs.length) alerts.push(["ev", "⚡", `em evento (${evs.length})`]);
+  if (disadv && !dead) alerts.push(["warn", "⚠", "desvantagem"]);
+  const need = (n) => (n <= 0 ? "crit" : (n === 1 ? "low" : ""));
+  return `<div class="hg-quick">
+    ${d ? `<span class="hg-q dist" style="--dist:${d.color}" title="${esc(d.name)} — ${esc(d.sector)}">${d.ico} D${d.n}</span>` : ""}
+    <span class="hg-q hp" style="--c:${status.color}" title="dano acumulado">❤ ${damage}%</span>
+    ${sanityOn ? `<span class="hg-q san ${sanity >= 70 ? "bad" : ""}" title="sanidade">🌀 ${sanity}%</span>` : ""}
+    <span class="hg-q need ${need(hunger)}" title="fome">🍗 ${hunger}/3</span>
+    <span class="hg-q need ${need(thirst)}" title="sede">💧 ${thirst}/3</span>
+    ${w ? `<span class="hg-q wpn" title="arma mais forte do inventário">🗡️ ${esc(shortName(w.name))} <em>${esc(w.atk.coated ? HE.coatDice(w.atk.dmg) : w.atk.dmg)}${w.atk.ammo != null ? ` · ${w.atk.ammo}🏹` : ""}</em></span>` : `<span class="hg-q wpn mute" title="sem arma no inventário">✊ desarmado</span>`}
+    ${shield ? `<span class="hg-q wpn" title="escudo equipado">🔰 ${esc(shortName(shield.name))}</span>` : ""}
+    ${alerts.map(([c, ico, label]) => `<span class="hg-q al ${c}" title="${esc(label)}">${ico} ${esc(label)}</span>`).join("")}
+  </div>`;
+}
+
+// silhueta do tributo: o "nível" de vida sobe de baixo para cima e a cor muda por estado
+export function silhouetteSvg(character, damage, maxDmg, stateKey, dead){
+  const d = HE.districtOf(character);
+  const remain = dead ? 0 : Math.max(0, Math.min(1, 1 - damage / maxDmg));
+  const H = 160, y = H - remain * H;
+  const tone = dead ? "#3a3a3a" : ({ normal: (d ? d.color : "#46c27a"), mancando: "#e0a23c", chao: "#d83a3a" }[stateKey] || (d ? d.color : "#46c27a"));
+  const id = `sil_${character.id}`;
+  return `<svg class="hg-sil-svg" viewBox="0 0 80 160" role="img" aria-label="silhueta: vida restante ${Math.round(remain * 100)}%">
+    <defs><clipPath id="${id}"><circle cx="40" cy="16" r="12"/><path d="M24 32 Q40 27 56 32 L62 66 L53 68 L51 94 L58 152 L46 152 L40 112 L34 152 L22 152 L29 94 L27 68 L18 66 Z"/></clipPath></defs>
+    <g clip-path="url(#${id})">
+      <rect x="0" y="0" width="80" height="160" fill="#0d0d0d"/>
+      <rect x="0" y="${y.toFixed(1)}" width="80" height="${(H - y).toFixed(1)}" fill="${tone}" opacity="${dead ? 1 : 0.92}"/>
+      ${remain > 0 && remain < 1 ? `<rect x="0" y="${y.toFixed(1)}" width="80" height="2.5" fill="#fff" opacity=".35"/>` : ""}
+    </g>
+    <path d="M24 32 Q40 27 56 32 L62 66 L53 68 L51 94 L58 152 L46 152 L40 112 L34 152 L22 152 L29 94 L27 68 L18 66 Z" fill="none" stroke="${tone}" stroke-width="1.6"/>
+    <circle cx="40" cy="16" r="12" fill="none" stroke="${tone}" stroke-width="1.6"/>
+    ${dead ? `<path d="M34 11 l4 4 m0 -4 l-4 4 M42 11 l4 4 m0 -4 l-4 4" stroke="#aaa" stroke-width="1.4"/>` : ""}
+  </svg>`;
+}
+
+// painel único: silhueta + barras alinhadas (dano, sanidade, fome, sede) + etiquetas de condição
+export function hungerStatusPanel(o){
+  const { character, damage, maxDmg, status, fillPct, ticksHtml, bodySt, disadv, sanityOn, sanity, insane, hunger, thirst, canEditHT, bleedNow, bleedProg, canEditDamage, fmtCountdown, bleedTicks, stateIconHtml, vigor, dead, htOn, bleedingOn } = o;
+  const now = Date.now();
+  const writable = canAct(character);
+  const seg = (n, cls) => `<div class="hg-seg ${cls}">${[1, 2, 3].map((i) => `<i class="${i <= n ? "on" : ""}"></i>`).join("")}</div>`;
+  const ctrl = (stat) => (canEditHT ? `<span class="hg-ctl"><button class="btn-mini" data-action="ht-dec" data-stat="${stat}">−</button><button class="btn-mini" data-action="ht-inc" data-stat="${stat}">+</button></span>` : "");
+  const inf = character.infection;
+  const infP = inf ? HE.infectionProgress(inf, now) : null;
+  const tags = [];
+  if (bleedNow) tags.push(`<span class="hg-tag bleed">🩸 <b>sangrando</b> · termina em <span class="bleed-countdown" data-bleed-start="${bleedNow.startedAt}">${fmtCountdown(bleedProg.msLeft)}</span> · ${bleedProg.appliedTicks}/${bleedTicks}${canEditDamage ? ` <button class="btn-mini" data-action="bleed-stop">parar</button>` : ""}</span>`);
+  if (inf) tags.push(`<span class="hg-tag bad" title="só a Erva Vermelha cura">🦠 <b>infectado</b> · −${INFECTION_TICK_DMG}% a cada 30 min · próxima em <b class="hg-next" data-hg-next="${now + infP.msToNext}">${fmtMs(infP.msToNext)}</b></span>`);
+  if (insane && !dead) tags.push(`<span class="hg-tag bad">🌀 <b>insano</b></span>`);
+  if (disadv && !dead) tags.push(`<span class="hg-tag warn" title="2d20, vale o menor">⚠ <b>desvantagem</b> em todos os testes</span>`);
+  const fxHtml = fxChips(character, writable, now);
+  return `<section class="sheet-section vital hg-status" data-state="${dead ? "morto" : bodySt.key}">
+    <div class="hg-status-grid">
+      <div class="hg-sil state-${dead ? "morto" : bodySt.key}">
+        ${silhouetteSvg(character, damage, maxDmg, bodySt.key, dead)}
+        <span class="hg-sil-state">${dead ? "☠ caiu" : `${stateIconHtml} ${esc(bodySt.label)}`}</span>
+      </div>
+      <div class="hg-bars">
+        <div class="hg-stat dmg">
+          <span class="hg-stat-l">❤️ dano</span>
+          <div class="hg-bar big"><i style="width:${fillPct}%;background:${status.color}"></i>${ticksHtml}</div>
+          <span class="hg-stat-v" style="color:${status.color}">${damage}%<small>/${maxDmg}</small></span>
+        </div>
+        ${sanityOn ? `<div class="hg-stat san ${insane ? "insane" : ""}">
+          <span class="hg-stat-l">🌀 sanidade</span>
+          <div class="hg-bar"><i class="san-fill" style="width:${sanity}%"></i></div>
+          <span class="hg-stat-v">${insane ? "INSANO" : `${sanity}%`}</span>
+        </div>` : ""}
+        ${htOn ? `<div class="hg-stat need ${hunger === 0 ? "crit" : ""}">
+          <span class="hg-stat-l">🍗 fome</span>${seg(hunger, "hunger")}<span class="hg-stat-v">${hunger}/3</span>${ctrl("hunger")}
+        </div>
+        <div class="hg-stat need ${thirst === 0 ? "crit" : ""}">
+          <span class="hg-stat-l">💧 sede</span>${seg(thirst, "thirst")}<span class="hg-stat-v">${thirst}/3</span>${ctrl("thirst")}
+        </div>` : ""}
+        <p class="hg-status-note">${bleedingOn ? esc(bodySt.desc) : `Limite de dano ${maxDmg}% (Vigor ${vigor}).`}</p>
+      </div>
+    </div>
+    ${(tags.length || fxHtml) ? `<div class="hg-tags">${tags.join("")}${fxHtml}</div>` : ""}
+  </section>`;
+}
