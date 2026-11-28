@@ -268,6 +268,15 @@ export function playEventAmbient(id){
     case "flora": noise(c, now, 3, { type: "bandpass", f: 1200, g: 0.04, shape: "swell", q: 3 }); tone(c, now, { f: 330, to: 294, dur: 2.4, g: 0.04, vib: 3 }); break;
     case "ceia": [880, 1175, 1568].forEach((f, i) => tone(c, now, { f, dur: 1.2, g: 0.06, delay: i * 0.18 })); break;
     case "bomba": for (let i = 0; i < 4; i++) tone(c, now, { type: "triangle", f: i % 2 ? 560 : 820, dur: 0.38, g: 0.1, delay: i * 0.4 }); break;
+    case "vulcao":
+      tone(c, now, { type: "sawtooth", f: 40, to: 28, dur: 3.4, g: 0.13, vib: 5 });
+      noise(c, now, 3.6, { type: "lowpass", f: 500, to: 90, g: 0.3, shape: "swell" });
+      for (let i = 0; i < 6; i++) noise(c, now + 0.4 + i * 0.45, 0.12, { type: "highpass", f: 2500, g: 0.12 });   // estalos de lava
+      break;
+    case "passaros":
+      for (let i = 0; i < 12; i++) tone(c, now, { type: "sawtooth", f: 900 + Math.random() * 900, to: 500 + Math.random() * 500, dur: 0.14, g: 0.035, delay: Math.random() * 2.6, vib: 25 });
+      noise(c, now, 3, { type: "bandpass", f: 3000, g: 0.03, shape: "swell", q: 1.2 });
+      break;
     case "bomba_impacto":
       tone(c, now, { f: 90, to: 22, dur: 1.6, g: 0.6 });
       noise(c, now, 1.8, { type: "lowpass", f: 2600, to: 60, g: 0.6 });

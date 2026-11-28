@@ -202,7 +202,7 @@ export function weightedPick(pool, rng = Math.random){
 export const rollSponsorKey = (rng = Math.random) => weightedPick(SPONSOR_POOL, rng).key;
 // locais possíveis: a Cornucópia (fixa) + os locais cadastrados pelo narrador
 export function dropLocations(locs){
-  return [{ id: CORNUCOPIA.id, name: CORNUCOPIA.label, region: "cornucopia" }, ...(locs || [])];
+  return [{ id: CORNUCOPIA.id, name: CORNUCOPIA.label, region: "cornucopia" }, ...(locs || []).filter((l) => !l.blocked)];   // rotas bloqueadas pelo vulcão não recebem drops
 }
 export const pickLocation = (locs, rng = Math.random) => { const l = dropLocations(locs); return l[Math.floor(rng() * l.length)]; };
 
@@ -314,7 +314,14 @@ export function applyResult(char, res, now = Date.now(), rng = Math.random){
   if (damage !== before) patch.damage = damage;
   if (sanity !== sBefore) patch.sanity = sanity;
   if (lost.length || contaminated) patch.items = items.map(strip);
+  // garras e estilhaços: chance de abrir sangramento (só em fichas de personagem, só se houve dano)
+  let bled = false;
+  if (res.bleedChance > 0 && damage > before && !char.hpMax && !char.bleeding && damage < max && rng() * 100 < res.bleedChance) {
+    patch.bleeding = { startedAt: now, ticksApplied: 0 };
+    bled = true;
+  }
   return {
+    bled,
     patch, before, after: damage, max, sBefore, sAfter: sanity, lost, contaminated,
     added: added.length, died: damage >= max && before < max, mad: sanity >= 100 && sBefore < 100,
   };

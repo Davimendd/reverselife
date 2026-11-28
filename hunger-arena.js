@@ -226,7 +226,7 @@ function locsHtml(narr){
   return `<div class="hg-locs-body">
     <div class="hg-loc-grid">
       <div class="hg-loc-col cornucopia"><b>🏺 Cornucópia</b><small>local fixo, no centro da arena</small></div>
-      ${REGIONS.map((r) => `<div class="hg-loc-col"><b>🧭 ${r.label}</b>${by(r.id).map((l) => `<div class="hg-loc-item"><span>${esc(l.name)}</span>${narr ? `<button class="btn-mini" data-hg-locdel="${l.id}" title="remover">✕</button>` : ""}${l.desc ? `<small>${esc(l.desc)}</small>` : ""}</div>`).join("") || `<small class="hg-hint">nenhum local</small>`}</div>`).join("")}
+      ${REGIONS.map((r) => `<div class="hg-loc-col"><b>🧭 ${r.label}</b>${by(r.id).map((l) => `<div class="hg-loc-item ${l.blocked ? "blocked" : ""}"><span>${l.blocked ? "🚫 " : ""}${esc(l.name)}${l.blocked ? " <em>(bloqueado)</em>" : ""}</span>${narr ? `<button class="btn-mini" data-hg-locblock="${l.id}" title="${l.blocked ? "liberar a rota" : "bloquear a rota (vulcão)"}">${l.blocked ? "liberar" : "🚫"}</button><button class="btn-mini" data-hg-locdel="${l.id}" title="remover">✕</button>` : ""}${l.desc ? `<small>${esc(l.desc)}</small>` : ""}</div>`).join("") || `<small class="hg-hint">nenhum local</small>`}</div>`).join("")}
     </div>
     ${narr ? `<div class="hg-loc-add">
       <input type="text" class="modal-input" data-hg-locname maxlength="40" placeholder="nome do local (ex.: Lago Seco)">
@@ -313,6 +313,14 @@ function bind(host){
   });
   host.querySelectorAll("[data-hg-locdel]").forEach((b) => b.addEventListener("click", async () => {
     try { await ctx.api.patchCampaign(cid(), { arenaLocs: locsOf().filter((l) => l.id !== b.dataset.hgLocdel) }); } catch (e) { err(errMsg(e)); }
+  }));
+  host.querySelectorAll("[data-hg-locblock]").forEach((b) => b.addEventListener("click", async () => {
+    const id = b.dataset.hgLocblock, l = locsOf().find((x) => x.id === id);
+    if (!l) return;
+    try {
+      await ctx.api.patchCampaign(cid(), { arenaLocs: locsOf().map((x) => (x.id === id ? { ...x, blocked: !x.blocked } : x)) });
+      ctx.log(l.blocked ? "🛤️" : "🚫", l.blocked ? `A rota para <b>${esc(l.name)}</b> foi liberada.` : `A rota para <b>${esc(l.name)}</b> foi <b>bloqueada</b> (${esc(regionLabel(l.region))}).`);
+    } catch (e) { err(errMsg(e)); }
   }));
   const dn = q("[data-hg-dropnow]");
   if (dn) dn.addEventListener("click", async () => {
@@ -570,6 +578,7 @@ async function applyEvent(rec, ev, picks, followUp){
     const bits = [];
     if (ap.after !== ap.before) bits.push(`vida ${ap.before}% → <b>${ap.after}%</b>`);
     if (ap.sAfter !== ap.sBefore) bits.push(`sanidade ${ap.sBefore}% → <b>${ap.sAfter}%</b>`);
+    if (ap.bled) bits.push("🩸 começou a sangrar");
     if (ap.lost.length) bits.push(`perdeu: ${ap.lost.map(esc).join(", ")}`);
     if (ap.contaminated) bits.push(`${ap.contaminated} item(ns) de água/comida contaminados`);
     if (res.fx.length) bits.push(`recebeu: ${res.fx.map((f) => esc(f.l)).join("; ")}`);

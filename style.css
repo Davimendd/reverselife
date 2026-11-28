@@ -3780,3 +3780,19 @@ body.hgfx-shake{ animation:hgQuake .22s linear 6; }
 @media (prefers-reduced-motion: reduce){
   .character-card.hg-hit, .character-card.hg-hit.hard, .hg-hero, .hg-die, .hg-verdict, .hg-hero-t.big .num .n{ animation:none; }
 }
+
+/* ---------- Vulcão em Erupção e Pássaros Assassinos ---------- */
+.hgfx-vulcao .edge{ box-shadow:inset 0 0 150px 24px rgba(255,90,31,.5); }
+.hgfx-vulcao .glow{ left:0; right:0; bottom:0; height:38vh; background:linear-gradient(to top, rgba(255,80,20,.28), rgba(255,80,20,0)); animation:hgLava 1.6s ease-in-out infinite; }
+@keyframes hgLava{ 50%{ opacity:.55; } }
+.hgfx-vulcao .ember{ bottom:-12px; width:var(--s); height:var(--s); border-radius:50%; background:#ffb347; box-shadow:0 0 10px 2px #ff6a1f; animation:hgRise var(--t) var(--d) linear infinite; }
+.hgfx-passaros .edge{ box-shadow:inset 0 0 130px 14px rgba(120,80,30,.45); }
+.hgfx-passaros .bird{ left:-8%; font-size:var(--s); filter:grayscale(.6) brightness(.55) drop-shadow(0 0 4px rgba(0,0,0,.8)); animation:hgSwoop var(--t) var(--d) linear infinite; }
+@keyframes hgSwoop{ to{ transform:translate(118vw, var(--dy)); } }
+
+/* local bloqueado (rota destruída pelo vulcão) */
+.hg-loc-item.blocked > span{ color:#d88a6a; text-decoration:line-through; text-decoration-color:rgba(216,138,106,.5); }
+.hg-loc-item.blocked em{ font-style:normal; text-decoration:none; color:var(--mute); font-size:.68rem; }
+.hg-map-svg .map-pin.blocked .dot{ fill:#3a1a14; stroke:#d83a3a; }
+.hg-map-svg .map-pin.blocked .map-lname{ fill:#a8665a; text-decoration:line-through; }
+.hg-map-svg .map-block{ font-size:9px; fill:#ff6a5a; font-weight:700; }

@@ -52,7 +52,7 @@ export const ARENA_EVENTS = [
   },
 
   // ---------------------------------------------------------------- Terremoto
-  { id: "terremoto", name: "Terremoto", ico: "🌋", color: "#b5733a", durationMin: 15, sanity: 12,
+  { id: "terremoto", name: "Terremoto", ico: "🏚️", color: "#b5733a", durationMin: 15, sanity: 12,
     desc: "Um terremoto provocado pelos Idealizadores desestabiliza a floresta. Árvores começam a tombar, raízes se rompem e o terreno sofre deslizamentos, bloqueando rotas de fuga.",
     cons: [
       "Ferimentos por quedas e destroços (30 HP).",
@@ -263,6 +263,65 @@ export const ARENA_EVENTS = [
     },
   },
 
+
+  // ---------------------------------------------------------------- Vulcão em Erupção
+  { id: "vulcao", name: "Vulcão em Erupção", ico: "🌋", color: "#ff5a1f", durationMin: 30, sanity: 15,
+    desc: "O vulcão entra em erupção, lançando cinzas, pedras incandescentes e rios de lava sobre a região. Os tributos precisam fugir antes que o território seja consumido.",
+    cons: [
+      "Queimaduras e ferimentos (40 HP; metade se fugir a tempo: teste Difícil de Agilidade).",
+      "Dificuldade respiratória devido às cinzas.",
+      "Destruição de abrigos e suprimentos (2 itens do inventário se perdem).",
+      "Bloqueio permanente de algumas rotas (o narrador marca locais como bloqueados no painel Locais da arena).",
+    ],
+    mech: [
+      "🧭 Bússola: acha a rota de fuga, e o teste de Agilidade passa a ser Normal em vez de Difícil.",
+      "🔦 Lanterna acesa: enxerga através da fumaça e ignora a penalidade de Agilidade das cinzas.",
+      "⛺ Lona: o abrigo montado é destruído.",
+      "🌫️ Cinzas: -2 em Vigor e Agilidade e 5 HP a cada 5 minutos (3 vezes).",
+      "🌀 Dano de sanidade do evento: 15%.",
+    ],
+    resolve(c, o){
+      const r = newRes();
+      const bussola = hasTag(c, "bussola", o.now), lant = hasTag(c, "lanterna", o.now);
+      const t = attrTest(c, "agilidade", bussola ? "normal" : "dificil", o.now, o.rng);
+      r.lines.push(tmsg(t, `Agilidade para fugir da lava${bussola ? " (bússola: dificuldade Normal)" : ""}`));
+      if (t.success) { r.dmg = 20; r.lines.push("Fugiu a tempo, mas foi alcançado por brasas: -20 HP."); }
+      else { r.dmg = 40; r.lines.push("Atingido por pedras incandescentes e lava: -40 HP."); }
+      r.fx.push(fxd(o, { l: "Queimaduras (-2 Agilidade)", bad: 1, min: o.minutes, m: { agilidade: -2 }, tag: "queimado" }));
+      const resp = { l: lant ? "Cinzas no ar (-2 Vigor)" : "Dificuldade respiratória (-2 Vigor e Agilidade)", bad: 1, tag: "cinzas_vulcao", dropWhenDone: 1,
+        m: lant ? { vigor: -2 } : { vigor: -2, agilidade: -2 }, min: o.minutes, schedRel: ticks(5, 5, 3, 5, "Cinzas do vulcão") };
+      r.fx.push(fxd(o, resp));
+      if (lant) r.lines.push("Lanterna: ignora a penalidade de Agilidade da fumaça.");
+      r.destroy = 2;
+      r.stripTags.push("abrigo");
+      r.lines.push("Abrigos e suprimentos destruídos (2 itens perdidos).");
+      r.sanity = this.sanity;
+      return r;
+    },
+  },
+
+  // ---------------------------------------------------------------- Pássaros Assassinos
+  { id: "passaros", name: "Pássaros Assassinos", ico: "🦅", color: "#b07a3c", durationMin: 20, sanity: 12,
+    desc: "Bandos de pássaros geneticamente modificados começam a imitar vozes humanas, atraindo os tributos para emboscadas. Quando as vítimas se aproximam, centenas de aves atacam simultaneamente.",
+    cons: [
+      "Ferimentos por bicadas e garras (10 a 25 HP).",
+      "Confusão e desorientação pelas vozes imitadas (teste Normal de Intelecto para não cair na farsa).",
+      "Separação de aliados durante os ataques.",
+      "Necessidade de abandonar esconderijos e equipamentos (1 item é deixado para trás).",
+    ],
+    mech: [
+      "🧠 Passou no teste de Intelecto: reconhece a farsa e leva só 10 HP. Falhou: cai na emboscada e leva 10 a 25 HP, com confusão.",
+      "🔰 Escudo equipado: -6 de dano.",
+      "🪢 Corda (ancorado) ou 🧭 Bússola: não é separado dos aliados.",
+      "🩸 As garras têm 30% de chance de abrir sangramento.",
+      "🌀 Dano de sanidade do evento: 12%.",
+    ],
+    resolve(c, o){ return passarosHit(c, o, this.sanity, true); },
+    followUps: [
+      { id: "novo_ataque", label: "Novo ataque do bando (10 a 25 HP)", resolve(c, o){ return passarosHit(c, o, 0, false); } },
+    ],
+  },
+
   // ---------------------------------------------------------------- A Última Ceia
   { id: "ceia", name: "A Última Ceia", ico: "🍽️", color: "#d4af37", durationMin: 60, sanity: 0, banquet: true,
     desc: "Um banquete será dado aos jogadores como forma de recompensa: eles poderiam cessar fogo por instantes e se deliciarem com as melhores comidas oferecidas pelos fornecedores dos jogos. Porém, tudo tem um \"a mais\": as comidas estarão envenenadas com venenos de pequena escala a grande escala (sorteado quais alimentos serão), onde a cura estará na arena de maneira discreta.",
@@ -311,6 +370,31 @@ export const ARENA_EVENTS = [
     },
   },
 ];
+// ataque dos pássaros assassinos (usado pelo evento e pelo "novo ataque do bando")
+function passarosHit(c, o, sanity, first){
+  const r = newRes();
+  const t = attrTest(c, "intelecto", "normal", o.now, o.rng);
+  r.lines.push(tmsg(t, "Intelecto para não cair na emboscada das vozes"));
+  if (t.success) { r.dmg = 10; r.lines.push("Reconheceu a farsa e se protegeu: só 10 HP de bicadas."); }
+  else {
+    r.dmg = 10 + Math.floor(o.rng() * 16);
+    r.lines.push(`Atraído pelas vozes: o bando ataca de todos os lados (-${r.dmg} HP).`);
+    r.fx.push(fxd(o, { l: "Confusão e desorientação (-2 Intelecto e Carisma)", bad: 1, min: 15, m: { intelecto: -2, carisma: -2 }, tag: "confuso" }));
+  }
+  const shield = (c.items || []).find((i) => i.def && i.def.equipped && !i.def.broken);
+  if (shield && r.dmg > 0) { const cut = Math.min(shield.def.absorb || 0, r.dmg - 1); if (cut > 0) { r.dmg -= cut; r.lines.push(`${shield.name}: -${cut} de dano.`); } }
+  r.bleedChance = 30;
+  if (first) {
+    if (hasTag(c, "ancora", o.now) || hasTag(c, "bussola", o.now)) r.lines.push("Corda/bússola: não se separou dos aliados.");
+    else r.lines.push("Separado dos aliados durante os ataques.");
+    r.destroy = 1;
+    r.stripTags.push("abrigo");
+    r.lines.push("Teve de abandonar o esconderijo e um equipamento.");
+  }
+  r.sanity = sanity;
+  return r;
+}
+
 export const EVENT_BY_ID = Object.fromEntries(ARENA_EVENTS.map((e) => [e.id, e]));
 
 export const ZONES = { seguro: "seguro (só a fumaça)", fogo: "o fogo alastrou até ele", area: "área da explosão (30 de dano)", centro: "epicentro / mesmo chat (50 de dano)" };

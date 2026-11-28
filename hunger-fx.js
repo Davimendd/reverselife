@@ -96,6 +96,8 @@ const EVENT_FX = {
   flora: () => ({ cls: "hgfx-flora", html: parts(26, () => `<i class="spore" style="left:${rnd(0, 100)}%;--d:${rnd(0, 4)}s;--t:${rnd(4, 7)}s;--s:${rnd(5, 12)}px;--dx:${rnd(-8, 8)}vw"></i>`) }),
   ceia: () => ({ cls: "hgfx-ceia", html: parts(24, () => `<i class="spark" style="left:${rnd(0, 100)}%;top:${rnd(4, 96)}%;--d:${rnd(0, 5)}s;--s:${rnd(4, 9)}px"></i>`) }),
   bomba: () => ({ cls: "hgfx-bomba", html: `<i class="siren"></i>` }),
+  vulcao: () => ({ cls: "hgfx-vulcao", html: parts(30, () => `<i class="ember" style="left:${rnd(0, 100)}%;--d:${rnd(0, 4)}s;--t:${rnd(2.6, 5)}s;--s:${rnd(3, 8)}px;--dx:${rnd(-12, 12)}vw"></i>`) + `<i class="glow"></i>`, shake: true }),
+  passaros: () => ({ cls: "hgfx-passaros", html: parts(16, () => `<i class="bird" style="top:${rnd(2, 70)}%;--d:${rnd(0, 4.5)}s;--t:${rnd(1.6, 3)}s;--s:${rnd(14, 30)}px;--dy:${rnd(-8, 14)}vh">🦅</i>`) }),
 };
 
 export function eventFx(typeId){
@@ -195,15 +197,15 @@ export function arenaMapHtml({ locs = [], drops = [], events = [], chars = [], l
       const ang = a0 + ((k + 1) / (list.length + 1)) * (a1 - a0);
       const rad = 96 + (k % 2) * 34;
       const [x, y] = pol(rad, ang);
-      pins[l.id] = { x, y, name: l.name };
+      pins[l.id] = { x, y, name: l.name, blocked: !!l.blocked };
     });
   });
   const cornDrops = drops.filter((d) => d.locId === "cornucopia");
   const pinSvg = Object.entries(pins).map(([id, p]) => {
     const ds = drops.filter((d) => d.locId === id);
-    return `<g class="map-pin ${ds.length ? "has" : ""}" transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})">
+    return `<g class="map-pin ${ds.length ? "has" : ""} ${p.blocked ? "blocked" : ""}" transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})">
       <title>${esc(p.name)}${ds.length ? ` — ${ds.length} presente(s)` : ""}</title>
-      <circle r="5" class="dot"/>
+      <circle r="5" class="dot"/>${p.blocked ? `<text class="map-block" y="4" text-anchor="middle">✕</text>` : ""}
       <text class="map-lname" y="16" text-anchor="middle">${esc(p.name.length > 14 ? p.name.slice(0, 13) + "…" : p.name)}</text>
       ${ds.length ? `<text class="map-chute" y="-9" text-anchor="middle">🪂${ds.length > 1 ? `<tspan class="map-cnt" dx="1">×${ds.length}</tspan>` : ""}</text>` : ""}
     </g>`;
