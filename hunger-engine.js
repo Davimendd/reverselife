@@ -224,7 +224,7 @@ export function makeEventFx(def, src, now = Date.now()){
   if (tag) f.tag = tag;
   if (ev) f.ev = ev;
   if (dropWhenDone) f.dropWhenDone = 1;
-  if (schedRel && schedRel.length) f.sched = relSched(schedRel, now);
+  if (schedRel && schedRel.length) { f.sched = relSched(schedRel, now); f.t0 = now; f.n0 = f.sched.length; }
   return f;
 }
 
@@ -247,6 +247,7 @@ export function processSched(char, now = Date.now(), rng = Math.random){
     let kill = false;
     while (queue.length && queue[0].at <= now && !kill) {
       const e = queue.shift();
+      f.last = e.at; f.done = (f.done || 0) + 1;
       let R = e, testTxt = "";
       if (e.test) {
         const r = rollD20(e.test.attr, effAttr({ ...char, fx }, e.test.attr, now), e.test.dc || "normal", rng, false);

@@ -12,7 +12,7 @@ import { initBestiary, renderBestiary } from "./bestiary.js";
 import { setPassivesActive, maxExtra } from "./rules.js";
 import { hungerSeal, hungerBanner, hungerQuickRow, hungerStatusPanel, initHunger, hungerSections, hungerItemMeta, hungerItemActions, hungerControls, bindHungerCard, mountDistrictBlock, districtHeaderHtml, attrPassiveBadge, catalogPresets } from "./hunger.js";
 import { initArena, setArenaData, resetArenaData, renderArena, refreshMap } from "./hunger-arena.js";
-import { renderCounter, fallenTributeFx } from "./hunger-fx.js";
+import { renderCounter, fallenTributeFx, popDamages } from "./hunger-fx.js";
 import * as HE from "./hunger-engine.js";
 import { DISTRICT_BY_N } from "./hunger-data.js";
 import { initScene, renderScene } from "./scene.js";
@@ -1397,10 +1397,18 @@ function openCampaign(campaign){
     if (!campaignsAPI.listenCharacters) { setTimeout(tryListen, 100); return; }
     unsubscribeCharacters = campaignsAPI.listenCharacters(campaign.id, (list) => {
       checkForNotifications(list);
+      // Jogos Vorazes: quem perdeu (ou ganhou) vida desde o último retrato treme e mostra o número
+      const hadList = lastCharacterList.length > 0;
+      const oldDmg = new Map(lastCharacterList.map((c) => [c.id, c.damage || 0]));
       lastCharacterList = list;
       checkBleedingTicks();
       applyCharacterFilter();
       percyOnHits(lastHits);
+      if (hadList && isHunger(currentCampaign)) {
+        const deltas = new Map();
+        list.forEach((c) => { if (oldDmg.has(c.id)) { const d = Math.round((c.damage || 0) - oldDmg.get(c.id)); if (d) deltas.set(c.id, d); } });
+        if (deltas.size) popDamages(deltas);
+      }
       renderCounter(list, isHunger(currentCampaign));
       refreshMap();
     });
@@ -2044,6 +2052,7 @@ function renderCharacterCard(character){
     card.style.setProperty("--seal", `"${DISTRICT_BY_N[character.district].ico}"`);
     card.classList.add("has-dist");
   }
+  card.dataset.charId = character.id;
   if (hgOn) card.dataset.bodystate = dead ? "morto" : bodySt.key;
   const pGod = percyOn ? godOf(character) : null;
   if (pGod) card.style.setProperty("--god", pGod.color);

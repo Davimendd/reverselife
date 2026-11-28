@@ -377,6 +377,7 @@ async function coatWeapon(character, herbId){
 export function tick(){
   if (!active()) return;
   const now = Date.now();
+  updateTimelines(now);
   document.querySelectorAll("[data-hg-next]").forEach((el) => { el.textContent = fmtMs(Math.max(0, parseInt(el.dataset.hgNext, 10) - now)); });
   ctx.characters().forEach((c) => {
     if (!canAct(c) || inflight.has(c.id)) return;
@@ -514,7 +515,8 @@ export function hungerStatusPanel(o){
   if (inf) tags.push(`<span class="hg-tag bad" title="só a Erva Vermelha cura">🦠 <b>infectado</b> · −${INFECTION_TICK_DMG}% a cada 30 min · próxima em <b class="hg-next" data-hg-next="${now + infP.msToNext}">${fmtMs(infP.msToNext)}</b></span>`);
   if (insane && !dead) tags.push(`<span class="hg-tag bad">🌀 <b>insano</b></span>`);
   if (disadv && !dead) tags.push(`<span class="hg-tag warn" title="2d20, vale o menor">⚠ <b>desvantagem</b> em todos os testes</span>`);
-  const fxHtml = fxChips(character, writable, now);
+  const fxHtml = fxChips(character, writable, now, { noSched: true });
+  const tlHtml = timelinesHtml(character, writable, now);
   return `<section class="sheet-section vital hg-status" data-state="${dead ? "morto" : bodySt.key}">
     <div class="hg-status-grid">
       <div class="hg-sil state-${dead ? "morto" : bodySt.key}">
@@ -541,6 +543,61 @@ export function hungerStatusPanel(o){
         <p class="hg-status-note">${bleedingOn ? esc(bodySt.desc) : `Limite de dano ${maxDmg}% (Vigor ${vigor}).`}</p>
       </div>
     </div>
+    ${tlHtml ? `<div class="hg-tls">${tlHtml}</div>` : ""}
     ${(tags.length || fxHtml) ? `<div class="hg-tags">${tags.join("")}${fxHtml}</div>` : ""}
   </section>`;
+}
+
+
+// ============================================================
+// linha do tempo dos efeitos agendados (veneno, fogo, cinzas, nevasca, chuva, afogamento, bomba...)
+// ============================================================
+const TL_ICON = { veneno: "☠️", veneno_leve: "🤢", fogo: "🔥", cinzas_hp: "🌫️", cinzas: "🌫️", nevasca_hp: "❄️", chuva_hp: "🌧️", afogando: "🌊", bomba: "💣" };
+const ATTR_NAME = { forca: "Força", agilidade: "Agilidade", vigor: "Vigor", carisma: "Carisma", intelecto: "Intelecto" };
+const stepText = (e) => {
+  const b = [];
+  if (e.dmg) b.push(`−${e.dmg}% de vida`);
+  if (e.sanity) b.push(`+${e.sanity}% de sanidade`);
+  if (e.test) b.push(`teste de ${ATTR_NAME[e.test.attr] || e.test.attr}`);
+  if (e.fx && e.fx.length && !e.dmg) b.push("novo efeito");
+  return `${e.label ? `${e.label}` : "etapa"}${b.length ? `: ${b.join(", ")}` : ""}`;
+};
+
+export function timelinesHtml(character, writable, now = Date.now()){
+  return liveFx(character, now).filter((f) => f.sched && f.sched.length).map((f) => {
+    const q = f.sched.slice().sort((a, b) => a.at - b.at);
+    const pts = [];                                   // pontos futuros; repetições ("again") aparecem como pontos mais apagados
+    q.forEach((e) => {
+      pts.push({ at: e.at, sure: true });
+      if (e.again) for (let k = 1; k <= e.again.max - (e.n || 1); k++) pts.push({ at: e.at + k * e.again.everyMs, sure: false });
+    });
+    const t0 = f.t0 || Math.min(now, q[0].at - 1000);
+    const end = Math.max(...pts.map((p) => p.at), t0 + 1000);
+    const pct = (t) => Math.max(0, Math.min(100, ((t - t0) / (end - t0)) * 100));
+    const done = f.done || 0;
+    const next = q[0];
+    const icon = TL_ICON[f.tag] || "⏱️";
+    return `<div class="hg-tl ${f.bad ? "bad" : "good"}" data-hg-tl data-t0="${t0}" data-end="${end}" data-next="${next.at}">
+      <div class="hg-tl-top">
+        <span class="hg-tl-name">${icon} ${esc(f.l)}</span>
+        <span class="hg-tl-eta">próxima etapa em <b data-hg-eta>${fmtMs(Math.max(0, next.at - now))}</b></span>
+        ${writable ? `<button class="btn-mini" data-fx-del="${f.id}" title="remover o efeito">✕</button>` : ""}
+      </div>
+      <div class="hg-tl-bar" role="progressbar" aria-valuenow="${Math.round(pct(now))}" aria-valuemin="0" aria-valuemax="100">
+        <i class="fill" style="width:${pct(now).toFixed(1)}%"></i>
+        ${pts.map((p) => `<span class="mk ${p.sure ? "" : "maybe"} ${p.at <= now ? "past" : ""}" style="left:${pct(p.at).toFixed(1)}%"></span>`).join("")}
+      </div>
+      <div class="hg-tl-next">▸ ${esc(stepText(next))} <em>· etapa ${done + 1}/${done + pts.length}</em></div>
+    </div>`;
+  }).join("");
+}
+
+function updateTimelines(now){
+  document.querySelectorAll("[data-hg-tl]").forEach((el) => {
+    const t0 = parseInt(el.dataset.t0, 10), end = parseInt(el.dataset.end, 10), nx = parseInt(el.dataset.next, 10);
+    const pct = Math.max(0, Math.min(100, ((now - t0) / (end - t0)) * 100));
+    const fill = el.querySelector(".fill"); if (fill) fill.style.width = `${pct.toFixed(1)}%`;
+    const eta = el.querySelector("[data-hg-eta]"); if (eta) eta.textContent = fmtMs(Math.max(0, nx - now));
+    el.querySelectorAll(".mk").forEach((m) => { const left = parseFloat(m.style.left); m.classList.toggle("past", left <= pct); });
+  });
 }

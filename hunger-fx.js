@@ -223,3 +223,69 @@ export function arenaMapHtml({ locs = [], drops = [], events = [], chars = [], l
     ${pinSvg}
   </svg>`;
 }
+
+// ============================================================
+// resultado do ataque em destaque (dado, veredito e dano em número grande)
+// ============================================================
+const VERDICT = { crit: "★ CRÍTICO!", hit: "ACERTOU", miss: "ERROU", fumble: "FALHA CRÍTICA", resisted: "RESISTIU" };
+export function attackHeroHtml({ plan, entry, act, targets }){
+  const t = plan.test;
+  let outcome = "hit";
+  if (t) {
+    if (plan.failed) outcome = t.die === 1 ? "fumble" : "miss";
+    else if (plan.crit) outcome = "crit";
+  }
+  const dmgTargets = (targets || []).filter((x) => x.hasDmg);
+  if (outcome === "hit" && dmgTargets.length && dmgTargets.every((x) => x.resisted)) outcome = "resisted";
+  const flavor = { crit: "20 natural: dano dobrado (triplo à distância)", fumble: "1 natural: o pior dos resultados", miss: "o golpe passa longe", resisted: "o alvo resistiu ao efeito", hit: "" }[outcome];
+
+  const die = t ? `<div class="hg-die"><small>D20</small><b>${t.die}</b><span>${t.bonus >= 0 ? "+" : ""}${t.bonus} = <em>${t.total}</em></span><span class="need">precisa ${t.test ? t.test.min : "?"}</span></div>` : "";
+
+  const one = (x, big) => {
+    const unit = x.mon ? "de dano" : "% de dano";
+    const shown = x.queued ? x.rolled : x.applied;
+    const bits = [];
+    if (x.hasDmg && !x.queued && x.rolled !== x.applied) bits.push(`rolou ${x.rolled} · ${x.absorbed ? `−${x.absorbed} absorvido` : "reduzido"}`);
+    if (x.pierce) bits.push("ignora armadura");
+    if (x.bled) bits.push("🩸 abriu um sangramento!");
+    if (x.queued) bits.push("⏳ aguardando aplicação");
+    if (x.heal) bits.push(`+${x.heal} de cura`);
+    if (x.fx && x.fx.length) bits.push(x.fx.map(esc).join("; "));
+    const num = x.hasDmg ? `<b class="n">${shown}</b><small>${unit}</small>` : (x.heal ? `<b class="n heal">+${x.heal}</b><small>cura</small>` : `<small>sem dano</small>`);
+    return `<div class="hg-hero-t ${big ? "big" : ""}"><span class="who">${x.mon ? "👹 " : ""}${esc(x.name)}</span><span class="num">${num}</span>${bits.length ? `<span class="sub">${bits.join(" · ")}</span>` : ""}</div>`;
+  };
+  let body = "";
+  if (outcome === "miss" || outcome === "fumble") body = `<div class="hg-hero-miss">${(targets || []).length ? esc(targets.map((x) => x.name).join(", ")) + " não foi atingido" : "nenhum efeito"}</div>`;
+  else if ((targets || []).length === 1) body = one(targets[0], true);
+  else if ((targets || []).length > 1) body = targets.map((x) => one(x, false)).join("");
+  else body = `<div class="hg-hero-miss">efeito registrado</div>`;
+
+  return `<div class="hg-hero ${outcome}">
+    <div class="hg-hero-head"><span>${esc(entry.n)}</span><small>${esc(act.l || "")}</small></div>
+    <div class="hg-hero-main">${die}<div class="hg-verdict">${VERDICT[outcome]}${flavor ? `<small>${flavor}</small>` : ""}</div></div>
+    <div class="hg-hero-body">${body}</div>
+  </div>`;
+}
+
+// ============================================================
+// ficha atingida: treme e o número de dano sobe (e verde quando recebe cura)
+// ============================================================
+export function damagePop(card, delta){
+  if (!card || !delta || !fxEnabled()) return;
+  const dmg = delta > 0, n = Math.abs(delta);
+  const pop = document.createElement("div");
+  pop.className = `hg-pop ${dmg ? "dmg" : "heal"} ${n >= 15 ? "big" : ""}`;
+  pop.textContent = `${dmg ? "−" : "+"}${n}%`;
+  pop.setAttribute("aria-hidden", "true");
+  card.appendChild(pop);
+  setTimeout(() => pop.remove(), 1900);
+  const cls = dmg ? (n >= 15 ? "hg-hit hard" : (n >= 5 ? "hg-hit" : "hg-hit light")) : "hg-healed";
+  cls.split(" ").forEach((c) => card.classList.add(c));
+  setTimeout(() => cls.split(" ").forEach((c) => card.classList.remove(c)), 900);
+}
+export function popDamages(deltas){
+  deltas.forEach((delta, id) => {
+    const card = document.querySelector(`.character-card[data-char-id="${CSS.escape(id)}"]`);
+    if (card) damagePop(card, delta);
+  });
+}

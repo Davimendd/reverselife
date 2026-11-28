@@ -12,6 +12,7 @@ import { icon } from "./icons.js";
 import { playFx, fxEnabled, setFxEnabled } from "./percy-fx.js";
 import { autoOpt, actWarnings } from "./scene.js";
 import { isHungerCampaign, coatDice } from "./hunger-engine.js";
+import { attackHeroHtml } from "./hunger-fx.js";
 import { lineFor, randomLine, PUNCH_LINES, WEAPON_LINES, MAGIC_ITEM_LINES, MONSTER_LINES, FAIL_LINES, CRIT_LINES } from "./olympus-lines.js";
 
 let ctx = null;
@@ -75,8 +76,9 @@ function entryCard(character, kind, entry, writable, now){
   </article>`;
 }
 
-export function fxChips(character, writable, now){
-  const list = EN.liveFx(character, now);
+export function fxChips(character, writable, now, opts = {}){
+  let list = EN.liveFx(character, now);
+  if (opts.noSched) list = list.filter((f) => !(f.sched && f.sched.length));     // efeitos com agenda ganham linha do tempo própria
   if (!list.length) return "";
   return `<div class="pz-fx-list">${list.map((f) => {
     const bits = [];
@@ -394,6 +396,7 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   else if (plan.crit) playFx({ crit: true });
   const rows = [];
   const logs = [];
+  const heroT = [];           // resumo por alvo para o painel de resultado (Jogos Vorazes)
 
   // frase de invocação: uma linha de narração para o histórico e para o resultado
   let narr = "";
@@ -425,12 +428,16 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
     if (t.fx.length) bits.push(t.fx.map((f) => esc(f.l)).join("; "));
     const header = `<b>${target.isMonster ? `${esc(target.ico || "👹")} ` : ""}${esc(target.fullName)}</b>`;
     let status = "";
+    let delivered_ = null;
     if (hasEffect) {
       const delivered = await deliver(target, packet, character, entry, act);
       status = delivered.queued ? ` <em class="pz-queued">⏳ aguardando ${ctx.isNarrator() ? "o dono da ficha" : "o narrador ou o dono da ficha"} aplicar</em>` : (delivered.steps && delivered.steps.length ? ` <em>(${delivered.steps.map(esc).join("; ")})</em>` : "");
       logs.push(delivered.log);
+      delivered_ = delivered;
     }
     rows.push(`<div class="pz-line">${header}: ${bits.join(" · ") || "sem efeito"}${status}</div>`);
+    heroT.push({ name: target.fullName, mon: !!target.isMonster, rolled: t.dmg ? t.dmg.total : 0, heal: t.heal || 0, resisted: !!t.resisted, hasDmg: !!t.dmg, fx: t.fx.map((f) => f.l), pierce: !!t.pierce,
+      applied: delivered_ ? delivered_.applied : 0, absorbed: delivered_ ? delivered_.absorbed : 0, bled: delivered_ ? delivered_.bled : false, queued: delivered_ ? !!delivered_.queued : false });
   }
 
   // 2) o próprio conjurador: recarga, efeitos próprios e custo (atômico)
@@ -471,7 +478,8 @@ async function execute({ character, kind, entry, act, foes, allies, dcKey, opts 
   }
   if (!plan.failed) logs.unshift(`${kind === "ultimate" ? "⚡" : kind === "presente" ? "🎁" : "✨"} ${who} usou <b>${esc(entry.n)}</b> — ${esc(act.l)}${plan.test ? ` (${esc(d20Message(plan.test))}${plan.crit ? " ★ 20 natural" : ""})` : ""}${selfMsg}.${narrHtml ? `<br>${narrHtml}` : ""}`);
   logs.forEach((l) => { const m = l.match(/^(\S+)\s+([\s\S]*)$/); ctx.log(m ? m[1] : "🎲", m ? m[2] : l); });
-  return rows.join("");
+  const hero = isHunger(ctx.campaign()) ? attackHeroHtml({ plan, entry, act, targets: heroT }) : "";
+  return hero + (hero ? `<details class="hg-hero-more"><summary>detalhes do teste</summary>${rows.join("")}</details>` : rows.join(""));
 }
 
 // entrega a um alvo: direto se tiver permissão, senão pela fila de hits
@@ -483,7 +491,7 @@ async function deliver(target, packet, caster, entry, act){
     let res = null;
     try {
     await mutateT(target, (data) => { res = EN.applyPacket(data, { ...packet }, Date.now()); return res.patch; });
-    return { queued: false, steps: res.steps, log: describeApplied(tname, { ...packet, bled: res.bled }, res, "", !!target.isMonster) };
+    return { queued: false, steps: res.steps, applied: Math.max(0, res.after - res.before), absorbed: res.absorbed || 0, bled: !!res.bled, log: describeApplied(tname, { ...packet, bled: res.bled }, res, "", !!target.isMonster) };
     } catch (err) {
       // sem permissão de escrita (regras do Firestore antigas): cai na fila de hits
       if (canWrite(target) || !/permission|insufficient/i.test(String((err && (err.code || err.message)) || ""))) throw err;

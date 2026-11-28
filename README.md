@@ -397,3 +397,9 @@ Seção própria no fim da página da campanha, só existe com o sistema Percy J
 - **Silhueta do tributo:** a figura se enche de baixo para cima com a vida restante e muda de tom por estado (cor do distrito em Normal, âmbar em Mancando, vermelho em No Chão, cinza quando cai).
 - **Linha recolhida:** com a ficha fechada já aparecem distrito, dano, sanidade, fome, sede, a arma mais forte do inventário (com munição), o escudo equipado e alertas (🩸 sangrando, 🦠 infectado, ☠ envenenado, ⚡ em evento, ⚠ desvantagem...).
 - Os efeitos de som e tela agora são à prova de falha: se o navegador não tocar áudio, a ficha continua atualizando normalmente.
+
+### Jogos Vorazes — feedback de combate
+
+- **Resultado do ataque:** o painel mostra o dado grande (com bônus, total e o que era preciso), o veredito em cor forte (**ACERTOU**, **ERROU**, **RESISTIU**) e o dano aplicado em número grande, já descontando armadura e escudo. Também avisa se o golpe abriu sangramento. **20 natural** ganha moldura dourada brilhante ("★ CRÍTICO!") e **1 natural** uma moldura vermelha tracejada que treme ("FALHA CRÍTICA"). Os detalhes do teste ficam recolhidos logo abaixo.
+- **Ficha atingida:** em qualquer tela com a campanha aberta, a ficha de quem perdeu vida treme (mais forte quando o dano é de 15% ou mais), pisca em vermelho e mostra o número subindo ("−21%"). Cura mostra "+N%" em verde. Vale para ataques, eventos, sangramento e infecção.
+- **Linha do tempo dos efeitos:** veneno, fogo, Chuva Escarlate, Nevasca, Tempestade de Cinzas, afogamento e bomba agora têm uma barra própria na ficha, com o tempo até a próxima etapa, os marcadores das etapas que faltam (pontos cinza = tentativas que podem se repetir, como apagar o fogo) e o que acontece na próxima ("Fogo: teste de Agilidade", "−10% de vida"). A barra anda em tempo real.
